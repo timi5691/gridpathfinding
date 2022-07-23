@@ -1,6 +1,6 @@
 - 👋 Hi, I’m @timi5691
 - 👀 I’m interested in game making
-- 🌱 I’m currently learning goddot, v programing language
+- 🌱 I’m currently learning godot, v programing language
 - 💞️ I’m looking to collaborate on ...
 - 📫 How to reach me ...
 
