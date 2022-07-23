@@ -4,7 +4,6 @@
 - 💞️ I’m looking to collaborate on ...
 - 📫 How to reach me ...
 
-<!---
-timi5691/timi5691 is a ✨ special ✨ repository because its `README.md` (this file) appears on your GitHub profile.
-You can click the Preview link to take a look at your changes.
---->
+If this project help you reduce time to develop, you can give me a cup of coffee :)
+
+https://paypal.me/ngtrth5691?country.x=VN&locale.x=vi_VN
