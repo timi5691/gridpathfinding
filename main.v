@@ -18,8 +18,10 @@ mut:
 	// this is to test with start point, in this example i can change the start by right mouse click, 
 	// left click to select end point, press o to change optimized 
 	start int
-	path []int
+	path []gpfd.PixelPos
 	optimized bool = true
+
+	follower gpfd.PathFollower
 }
 
 fn main() {
@@ -69,19 +71,35 @@ fn init(mut app App){
 		}
 	}
 
-
+	app.follower.pos = gpfd.PixelPos{x: 3*64 + 32, y: 1*64 + 32}
+	app.follower.after_finished_do = 2 // 0: stop, 1: reapeat, 2: reverse
 }
 
 
 fn on_click(x f32, y f32, button gg.MouseButton, mut app App) {
 	match button {
 		.left {
+			fl := app.follower
+			id_start := app.grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
+			// id_start := app.start
 			end := app.grid_data.get_id_from_pixel_pos(int(x), int(y))
-			// use func path_finding to find a path from start to end point
-			app.path = app.grid_data.path_finding(app.start, end, app.optimized)
+
+			app.path = app.grid_data.path_finding(id_start, end, app.optimized)
+			
+			app.follower.set_path(app.path, app.grid_data)
+			app.follower.start_move()
 		}
 		.right {
-			app.start = app.grid_data.get_id_from_pixel_pos(int(x), int(y))
+			mut fl := &app.follower
+			if fl.status == 0 {
+				id_click := app.grid_data.get_id_from_pixel_pos(int(x), int(y))
+				grid_pos_click := app.grid_data.cell_id_to_gridpos(id_click)
+				pos_click := app.grid_data.gridpos_to_pixel_pos(grid_pos_click)
+				half_cellsize := app.grid_data.cell_size/2
+				fl.pos.x = pos_click.x + half_cellsize
+				fl.pos.y = pos_click.y + half_cellsize
+			}
+			// app.start = app.grid_data.get_id_from_pixel_pos(int(x), int(y))
 		}
 		else {}
 	}
@@ -121,14 +139,14 @@ fn frame(mut app App) {
 			// draw walkable cells
 			if app.grid_data.is_cell_walkable(cell_id) {
 				ctx.draw_rect_filled(
-					cell_pos.x, cell_pos.y, app.grid_data.cell_size, app.grid_data.cell_size,
+					int(cell_pos.x), int(cell_pos.y), app.grid_data.cell_size, app.grid_data.cell_size,
 					gx.gray
 				)
 			}
 			// draw cell ids
 			ctx.draw_text(
-				cell_pos.x + app.grid_data.cell_size/2 - ctx.text_width(txt)/2, 
-				cell_pos.y + app.grid_data.cell_size/2 - ctx.text_height(txt)/2, 
+				int(cell_pos.x) + app.grid_data.cell_size/2 - ctx.text_width(txt)/2, 
+				int(cell_pos.y) + app.grid_data.cell_size/2 - ctx.text_height(txt)/2, 
 				txt,
 				gx.TextCfg{color: gx.white size: 12}
 			)
@@ -152,29 +170,25 @@ fn frame(mut app App) {
 	}
 
 	// draw path
-	if app.path.len == 0 {
+	pathsize := app.follower.path.len
+	if pathsize == 0 {
 		
-	} else if app.path.len >= 2 {
-		half_cell_size := app.grid_data.cell_size/2
-		for i in 0..app.path.len - 1{
-			point1 := app.path[i]
-			cell1 := app.grid_data.cells[point1]
-			x1 := cell1.pixelpos.x + half_cell_size
-			y1 := cell1.pixelpos.y + half_cell_size
-
-			point2 := app.path[i + 1]
-			cell2 := app.grid_data.cells[point2]
-			x2 := cell2.pixelpos.x + half_cell_size
-			y2 := cell2.pixelpos.y + half_cell_size
-
-			ctx.draw_line(x1, y1, x2, y2, gx.blue)
-
+	} else if pathsize >= 2 {
+		for i in 0..pathsize - 1{
+			pos1 := app.follower.path[i]
+			pos2 := app.follower.path[i + 1]
+			ctx.draw_line(pos1.x, pos1.y, pos2.x, pos2.y, gx.blue)
 		}
 	} else {
 
 	}
 
-	// draw debug text
-	ctx.draw_text(0, 0, 'optimized: $app.debug', gx.TextCfg{color: gx.blue size: 24})
+	// draw path follower
+	fl := app.follower
+	ctx.draw_circle_filled(fl.pos.x, fl.pos.y, 8, gx.red)
+
+	//draw debug text
+	ctx.draw_text(0, 0, 'step: $fl.step/${fl.path.len - 1}/ t: $fl.t status: $fl.status', gx.TextCfg{color: gx.blue size: 24})
 	ctx.end()
+	app.follower.moving()
 }
