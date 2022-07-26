@@ -7,3 +7,7 @@
 If this project help you reduce time to develop, you can give me a cup of coffee :)
 
 https://paypal.me/ngtrth5691?country.x=VN&locale.x=vi_VN
+
+feature:
+- pathfinding
+- pathfollower
