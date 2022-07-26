@@ -10,4 +10,4 @@ https://paypal.me/ngtrth5691?country.x=VN&locale.x=vi_VN
 
 feature:
 - pathfinding
-- pathfollower
+- pathfollower: move follow path and stop or repeat, reverse after finished move
