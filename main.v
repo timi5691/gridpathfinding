@@ -72,7 +72,7 @@ fn init(mut app App){
 	}
 
 	app.follower.pos = gpfd.PixelPos{x: 3*64 + 32, y: 1*64 + 32}
-	app.follower.after_finished_do = 2 // 0: stop, 1: reapeat, 2: reverse
+	app.follower.after_finished_do = 0 // 0: stop, 1: reapeat, 2: reverse
 }
 
 
