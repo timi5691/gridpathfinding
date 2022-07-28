@@ -96,6 +96,14 @@ pub fn (data GridData) get_id_from_pixel_pos(x f32, y f32) int {
 	return row*data.cols + col
 }
 
+pub fn (data GridData) get_pixel_pos_center_cell_id(cell_id int) PixelPos {
+	half_cell_size := data.cell_size/2
+	grid_pos := data.cell_id_to_gridpos(cell_id)
+	pos := data.gridpos_to_pixel_pos(grid_pos)
+	rs := PixelPos{x: pos.x + half_cell_size, y: pos.y + half_cell_size}
+	return rs
+}
+
 pub fn (data GridData) gridpos_to_pixel_pos(grid_pos GridPos) PixelPos {
 	return PixelPos {
 		x: grid_pos.col*data.cell_size
@@ -190,20 +198,57 @@ fn (data GridData) calculate_path(current int, start int, parents map[int]int) [
 }
 
 
-fn (data GridData) remove_not_walkable_neighbor (mut neighbors []int) {
-	for i in 0..neighbors.len {
-		neighbor := neighbors[i]
-		if !data.is_cell_walkable(neighbor) {
-			neighbors.delete(i)
+pub fn (data GridData) get_walkable_cells() []int {
+	mut rs := []int{}
+	for cell_id , cell in data.cells {
+		if cell.walkable {
+			rs << cell_id
 		}
 	}
+	return rs
 }
 
-pub fn (data GridData) path_finding(start int, end int, optimized bool) []PixelPos {
+
+pub fn (data GridData) find_another_next_end(start int, end int) int {
+	mut neighbors := data.get_neighbor_ids(end)
+	for id, cell in neighbors {
+		mut other_neighbors := data.get_neighbor_ids(cell)
+		if other_neighbors.len == 0 {
+			neighbors.delete(id)
+		}
+	}
+	if neighbors.len != 0 {
+		mut cell_id := neighbors.pop()
+		mut dist_min := data.path_finding(start, cell_id, true).len
+		for cell in neighbors {
+			dist := data.path_finding(start, cell, true).len
+			if dist < dist_min {
+				cell_id = cell
+				dist_min = dist
+			}
+		}
+		return cell_id
+	}
+	return -1
+}
+
+pub fn (data GridData) path_finding(start int, to int, optimized bool) []PixelPos {
 	mut open := map[int]Cost{}
 	mut closed := map[int]Cost{}
 	mut parents := map[int]int{}
+	mut current := start
+	start_pos := data.cell_id_to_pixelpos(current)
+	mut path := []PixelPos{}
+	mut end := to
 	
+	is_end_walkable := data.is_cell_walkable(end)
+	if !is_end_walkable {
+		end = data.find_another_next_end(start, end)
+		if end == -1 {
+			return [start_pos]
+		}
+	}
+
 	dist_to_end := data.calc_cost(start, end, optimized)
 	open[start] = Cost{
 		to_start: 0
@@ -211,9 +256,6 @@ pub fn (data GridData) path_finding(start int, end int, optimized bool) []PixelP
 		total: dist_to_end
 	}
 
-	mut current := start
-	start_pos := data.cell_id_to_pixelpos(current)
-	mut path := []PixelPos{}
 
 	for open.len != 0 {
 		current = find_best_cost(open)
@@ -262,22 +304,20 @@ pub fn (data GridData) path_finding(start int, end int, optimized bool) []PixelP
 
 pub struct PathFollower {
 pub mut:
+	name string
 	path []PixelPos
 	pos PixelPos
 	status int // 0 mean stop, 1 mean follow path
-	spd f32 = 0.1 // from 0.0 to 1.0
+	spd f32 = 0.05 // from 0.0 to 1.0
 	t f32 // from 0.0 to 1.0
 	a f32
 	b f32
 	step int
-	after_finished_do int // 0 mean stop, 1 mean repeat, 2 mean reverse
 }
 
-pub fn (mut fl PathFollower) set_path(pth_of_pos []PixelPos, grid_data GridData) {
+pub fn (mut fl PathFollower) set_path(pth_of_pos []PixelPos) {
 	fl.path = pth_of_pos
-	if fl.pos != fl.path[0] {
-		fl.path[0] = fl.pos
-	}
+	fl.path[0] = fl.pos
 }
 
 pub fn (mut fl PathFollower) start_move() {
@@ -286,55 +326,30 @@ pub fn (mut fl PathFollower) start_move() {
 	fl.status = 1
 }
 
-pub fn (mut fl PathFollower) moving() bool {
+pub fn (mut fl PathFollower) moving() {
 	if fl.status != 1 || fl.path.len < 2 {
-		return false
+		return
 	}
-
-	pth_size := fl.path.len
-	if fl.step == pth_size - 1 {
-		fl.finished_move()
-		return false
-	}
-
-	x0 := fl.path[fl.step].x
-	y0 := fl.path[fl.step].y
-	x1 := fl.path[fl.step + 1].x
-	y1 := fl.path[fl.step + 1].y
-
-	fl.a = x1 - x0
-	fl.b = y1 - y0
-
-	fl.pos.x = x0 + fl.a*fl.t
-	fl.pos.y = y0 + fl.b*fl.t
 	
+	fl.pos.x = fl.path[fl.step].x + fl.a*fl.t
+	fl.pos.y = fl.path[fl.step].y + fl.b*fl.t
+	
+	fl.a = fl.path[fl.step + 1].x - fl.path[fl.step].x
+	fl.b = fl.path[fl.step + 1].y - fl.path[fl.step].y
+
+	// increase t every frame
 	fl.t += fl.spd
+
+	// finished a step
 	if fl.t >= 1 {
 		fl.t = 0
 		fl.step += 1
 	}
 
-	return true
-}
-
-fn (mut fl PathFollower) finished_move() {
-	pth_size := fl.path.len
-	match fl.after_finished_do {
-		// stop
-		0 { 
-			fl.pos = fl.path[pth_size - 1]
-			fl.status = 0
-		}
-		// repeat
-		1 {
-			fl.pos = fl.path[0]
-			fl.start_move()
-		}
-		// reverse
-		2 {
-			fl.path = fl.path.reverse()
-			fl.start_move()
-			}
-		else {}
+	// finish move
+	if fl.step == fl.path.len - 1 {
+		fl.pos = fl.path[fl.path.len - 1]
+		fl.status = 0
 	}
 }
+
