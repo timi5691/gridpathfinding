@@ -69,13 +69,30 @@ fn init(mut app App){
 
 	app.half_cell_size = app.grid_data.cell_size/2
 	
-	app.pathfollowers['player'] = gpfd.PathFollower {
-		name: 'player'
-		pos: gpfd.PixelPos {
-			x: app.half_cell_size
-			y: app.half_cell_size
+	
+	app.pathfollowers['player'] = app.grid_data.create_follower('player', app.half_cell_size, app.half_cell_size)
+	
+	mut walkable_cells := app.grid_data.get_walkable_cells()
+	for i in 0..2 {
+		rn := rand.int_in_range(0, walkable_cells.len) or {panic(err)}
+		select_cell := walkable_cells[rn]
+		pos := app.grid_data.get_pixel_pos_center_cell_id(select_cell)
+		app.pathfollowers['$i'] = app.grid_data.create_follower('$i', pos.x, pos.y)
+		walkable_cells.delete(rn)
+		rn2 := rand.int_in_range(0, walkable_cells.len) or {panic(err)}
+		select_cell2 := walkable_cells[rn2]
+		pth := app.grid_data.path_finding(select_cell, select_cell2, true)
+		app.pathfollowers['$i'].reverse = true
+		app.pathfollowers['$i'].set_path(pth, mut app.grid_data)
+		walkable_cells.delete(rn2)
+	}
+	for fl_name, mut fl in app.pathfollowers {
+		if fl_name != 'player' {
+			fl.start_move(0.05, mut app.grid_data)
 		}
 	}
+
+
 }
 
 
@@ -87,21 +104,17 @@ fn on_click(x f32, y f32, button gg.MouseButton, mut app App) {
 			plpos := app.pathfollowers['player'].pos
 			plcellid := app.grid_data.get_id_from_pixel_pos(plpos.x, plpos.y)
 			pth := app.grid_data.path_finding(plcellid, click_id, true)
-			app.pathfollowers['player'].set_path(pth)
-			app.pathfollowers['player'].start_move()
+			is_player_stopped := app.pathfollowers['player'].status == 0
+			if is_player_stopped {
+				app.pathfollowers['player'].set_path(pth, mut app.grid_data)
+				app.pathfollowers['player'].start_move(0.05, mut app.grid_data)
+			} else {
+				app.pathfollowers['player'].change_dir = true
+				app.pathfollowers['player'].change_point_to = click_id
+			}
 		}
 		.right {
-			// random map
-			rd_size := app.grid_random_size
-			for  _ , mut cell in app.grid_data.cells {
-				n := rand.int_in_range(0, rd_size) or {panic(err)}
-				if n == 0 {
-					cell.walkable = false
-				} else {
-					cell.walkable = true
-				}
-			}
-			app.grid_data.cells[0].walkable = true
+			
 		}
 		else {}
 	}
@@ -116,8 +129,9 @@ fn on_key_down(key gg.KeyCode, m gg.Modifier, mut app App) {
 		.o {
 			app.test_switch = if app.test_switch {false} else {true}
 		}
-		.a {
-			
+		.n {
+			// random map
+			create_random_gridmap(mut app)
 		}
 		else {}
 	}
@@ -136,7 +150,8 @@ fn frame(mut app App) {
 			gridpos := gpfd.GridPos{col: col row: row}
 			cell_id := app.grid_data.gridpos_to_cell_id(gridpos)
 			cell_pos := app.grid_data.gridpos_to_pixel_pos(gridpos)
-			txt := cell_id.str()
+			register := app.grid_data.cells[cell_id].register
+			txt := '$cell_id/$register'
 			// draw not walkable cells
 			if !app.grid_data.is_cell_walkable(cell_id) {
 				ctx.draw_rect_filled(
@@ -161,37 +176,33 @@ fn frame(mut app App) {
 	ctx.draw_poly_empty(app.grid_polygon, gx.green)
 
 	// draw followers
-	radius := app.grid_data.cell_size/4
+	// radius := app.grid_data.cell_size/4
+	radius := 8
 	for _ , fl in app.pathfollowers {
-		ctx.draw_circle_filled(int(fl.pos.x), int(fl.pos.y), radius, gx.red)
+		ctx.draw_circle_filled(int(fl.pos.x), int(fl.pos.y), radius, fl.color)
 	}
 
 	// draw path
+	pth := app.pathfollowers['player'].path
+	pathsize := pth.len
 
-	if _ := app.pathfollowers['player'] {
-		pth := app.pathfollowers['player'].path
-		pathsize := pth.len
-
-		if pathsize == 0 {
-			
-		} else if pathsize >= 2 {
-			for i in 0..pathsize - 1{
-				pos1 := pth[i]
-				pos2 := pth[i + 1]
-				ctx.draw_line(pos1.x, pos1.y, pos2.x, pos2.y, gx.blue)
-			}
-		} else {
-
+	if pathsize >= 2 {
+		for i in 0..pathsize - 1{
+			pos1 := pth[i]
+			pos2 := pth[i + 1]
+			ctx.draw_line(pos1.x, pos1.y, pos2.x, pos2.y, gx.blue)
 		}
 	}
 	
-	//draw debug text
+	
+	// draw debug text
 	ctx.draw_text(0, 0, '$app.debug', gx.TextCfg{color: gx.blue size: 24})
 	ctx.show_fps()
 	ctx.end()
 
+	// moving follower
 	for _ , mut fl in app.pathfollowers {
-		fl.moving()
+		fl.moving(mut app.grid_data)
 	}
 }
 
