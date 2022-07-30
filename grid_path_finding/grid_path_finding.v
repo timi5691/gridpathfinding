@@ -2,7 +2,6 @@
 /// GRID AND PATHFINDING
 module grid_path_finding
 
-import rand
 import math {sqrt}
 import gx
 
@@ -237,6 +236,10 @@ pub fn (data GridData) find_another_next_end(start int, end int) int {
 	return -1
 }
 
+pub fn (data GridData) has_cell(cell_id int) bool {
+	return cell_id >= 0 && cell_id < data.rows*data.cols
+}
+
 pub fn (data GridData) path_finding(start int, to int, optimized bool) []PixelPos {
 	mut open := map[int]Cost{}
 	mut closed := map[int]Cost{}
@@ -305,7 +308,7 @@ pub fn (data GridData) path_finding(start int, to int, optimized bool) []PixelPo
 	return path
 }
 //////////////////////////////////////////////////////////////////////////////////
-/// FOLLOW PATH
+/// PATH FOLLOWER
 
 pub struct PathFollower {
 pub mut:
@@ -318,9 +321,9 @@ pub mut:
 	a f32
 	b f32
 	step int
+
 	registered_cell []int
 	cur_point int
-	reverse bool
 	color gx.Color = gx.red
 	change_dir bool
 	change_point_to int
@@ -364,6 +367,7 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 	
 	// start step
 	if fl.t == 0 {
+		// change path suddenly
 		if fl.change_dir {
 			new_pth := grid_data.path_finding(fl.cur_point, fl.change_point_to, true)
 			fl.set_path(new_pth, mut grid_data)
@@ -371,25 +375,53 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 			fl.change_dir = false
 			return
 		}
+
+		// if next step walkable
 		if grid_data.cells[next_point].walkable {
 			register := grid_data.cells[next_point].register
+			// situation next step hasn't registered
 			if register == '' {
 				fl.color = gx.green
 				grid_data.register(next_point, mut fl, n2_point)
+			// situation next step has registered by another follower
 			} else if register != fl.name {
 				reg_cell := grid_data.cells[next_point].reg_cell
 				is_opposite := reg_cell == fl.cur_point
-				// situation opposite move
+				// if another follower is moving opposite with the follower
 				if is_opposite {
 					fl.color = gx.purple
+					is_curpoint_smaller := fl.cur_point < next_point
+					is_hmoving := myabs(next_point - fl.cur_point) == 1
+					amount := if is_hmoving {grid_data.cols} else {1}
+					right_point := if is_curpoint_smaller {fl.cur_point + amount} else {fl.cur_point - amount}
+					is_righpoint_exist := grid_data.has_cell(right_point)
+					after_right_point :=  if is_curpoint_smaller {next_point + amount} else {next_point - amount}
+					is_after_right_point_exist := grid_data.has_cell(after_right_point)
+					fl_cur_gridpos := grid_data.cell_id_to_gridpos(fl.cur_point)
+					right_gridpos := grid_data.cell_id_to_gridpos(right_point)
 					
-					return
+					if is_righpoint_exist && is_after_right_point_exist {
+						is_right_point_same_row_or_col := fl_cur_gridpos.row == right_gridpos.row || fl_cur_gridpos.col == right_gridpos.col
+						is_righpoint_hasnt_registered := grid_data.cells[right_point].register == fl.name || grid_data.cells[right_point].register == ''
+						if is_right_point_same_row_or_col && is_righpoint_hasnt_registered {
+							rpos := grid_data.get_pixel_pos_center_cell_id(right_point)
+							after_rpos := grid_data.get_pixel_pos_center_cell_id(after_right_point)
+							
+							grid_data.register(right_point, mut fl, after_right_point)
+							fl.path.insert(fl.step + 1, [rpos, after_rpos])
+						} else {
+							return
+						}
+					} else {
+						return
+					}
 				} else {
 					// wait
 					fl.color = gx.red
 					return
 				}
 			}
+		// if next step not walkable, find another path
 		} else {
 			fl.color = gx.orange
 			cur_id := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
@@ -433,17 +465,6 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 		id_end := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
 		grid_data.staying(id_end)
 		fl.status = 0
-		
-		// test
-		if fl.reverse{
-			walkable_cells := grid_data.get_walkable_cells()
-			rn := rand.int_in_range(0, walkable_cells.len) or {panic(err)}
-			cell_to := walkable_cells[rn]
-			cur_id := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
-			pth := grid_data.path_finding(cur_id, cell_to, true)
-			fl.set_path(pth, mut grid_data)
-			fl.start_move(fl.spd, mut grid_data)
-		}
 	}
 }
 
