@@ -9,7 +9,7 @@ import rand.seed
 import grid_path_finding as gpfd
 
 const (
-	txt_cfg1 = gx.TextCfg{color: gx.gray size: 12}
+	txt_cfg1 = gx.TextCfg{color: gx.gray size: 16}
 )
 
 
@@ -20,6 +20,7 @@ mut:
 
 	grid_data gpfd.GridData
 	half_cell_size int
+	grid_test []int
 
 	grid_random_size int = 7
 
@@ -39,7 +40,7 @@ fn main() {
 	app.half_cell_size = app.grid_data.cell_size/2
 
 	app.gg = gg.new_context(
-		bg_color: gx.white
+		bg_color: gx.black
 		width: width
 		height: height
 		window_title: "TEST GRID PATH FINDING"
@@ -61,44 +62,14 @@ fn init(mut app App){
 	rand.seed(seed_array)
 	
 	// random map with cell not walkable
-	// create_random_gridmap(mut app)
+	create_random_gridmap(mut app)
 
 	app.half_cell_size = app.grid_data.cell_size/2
 	
 	
 	app.pathfollowers['player'] = app.grid_data.create_follower('player', app.half_cell_size, app.half_cell_size)
-	
-	for i in 0..2 {
-		if i == 0 {
-			c := 0
-			r := app.grid_data.rows/2
-			x := app.grid_data.cell_size*c + app.half_cell_size
-			y := app.grid_data.cell_size*r + app.half_cell_size
-			id := app.grid_data.get_id_from_pixel_pos(x, y)
-			id_to := id + (app.grid_data.cols - 1)
-			app.pathfollowers['$i'] = app.grid_data.create_follower(
-				'$i',
-				x,
-				y)
-			pth := app.grid_data.path_finding(id, id_to, true)
-			app.pathfollowers['$i'].set_path(pth, mut app.grid_data)
-			app.pathfollowers['$i'].spd = 0.02
-		} else if i == 1 {
-			c := app.grid_data.cols - 1
-			r := app.grid_data.rows/2
-			x := app.grid_data.cell_size*c + app.half_cell_size
-			y := app.grid_data.cell_size*r + app.half_cell_size
-			id := app.grid_data.get_id_from_pixel_pos(x, y)
-			id_to := id - (app.grid_data.cols - 1)
-			app.pathfollowers['$i'] = app.grid_data.create_follower(
-				'$i',
-				app.grid_data.cell_size*c + app.half_cell_size,
-				app.grid_data.cell_size*r + app.half_cell_size)
-			pth := app.grid_data.path_finding(id, id_to, true)
-			app.pathfollowers['$i'].set_path(pth, mut app.grid_data)
-			app.pathfollowers['$i'].spd = 0.02
-		}
-	}
+	app.pathfollowers['player'].spd = 0.1
+
 	for fl_name, mut fl in app.pathfollowers {
 		if fl_name != 'player' {
 			fl.start_move(fl.spd, mut app.grid_data)
@@ -120,7 +91,7 @@ fn on_click(x f32, y f32, button gg.MouseButton, mut app App) {
 			is_player_stopped := app.pathfollowers['player'].status == 0
 			if is_player_stopped {
 				app.pathfollowers['player'].set_path(pth, mut app.grid_data)
-				app.pathfollowers['player'].start_move(0.05, mut app.grid_data)
+				app.pathfollowers['player'].start_move(app.pathfollowers['player'].spd, mut app.grid_data)
 			} else {
 				app.pathfollowers['player'].change_dir = true
 				app.pathfollowers['player'].change_point_to = click_id
@@ -153,50 +124,64 @@ fn on_key_down(key gg.KeyCode, m gg.Modifier, mut app App) {
 fn frame(mut app App) {
 	ctx := app.gg
 	ctx.begin()
-
-	// draw not walkable_cells and cell_ids
 	
 	half_cell_size := app.half_cell_size
 	
-	for row in 0..app.grid_data.rows {
-		for col in 0..app.grid_data.cols {
-			gridpos := gpfd.GridPos{col: col row: row}
-			cell_id := app.grid_data.gridpos_to_cell_id(gridpos)
-			cell_pos := app.grid_data.gridpos_to_pixel_pos(gridpos)
-			register := app.grid_data.cells[cell_id].register
-			txt := '$cell_id/$register'
-			// draw not walkable cells
-			if !app.grid_data.is_cell_walkable(cell_id) {
-				ctx.draw_rect_filled(
-					int(cell_pos.x), int(cell_pos.y), app.grid_data.cell_size, app.grid_data.cell_size,
-					gx.black
-				)
-			}
-			// draw cell ids
-
-			if app.test_switch {
-				ctx.draw_text(
-					int(cell_pos.x) + half_cell_size - ctx.text_width(txt)/2, 
-					int(cell_pos.y) + half_cell_size - ctx.text_height(txt)/2, 
-					txt,
-					txt_cfg1
-				)
-			}
+	for i in 0..app.grid_test.len {
+		pos := app.grid_data.cells[i].pixelpos
+		if app.grid_test[i] == 0 {
+			ctx.draw_rect_filled(
+				pos.x, pos.y, 
+				app.grid_data.cell_size, app.grid_data.cell_size,
+				gx.white
+			)
 		}
+		ctx.draw_rect_empty(
+			pos.x, pos.y, 
+			app.grid_data.cell_size, app.grid_data.cell_size,
+			gx.gray
+		)
 	}
 
 	// draw followers
 	// radius := app.grid_data.cell_size/4
-	radius := 8
-	for _ , fl in app.pathfollowers {
-		ctx.draw_circle_filled(int(fl.pos.x), int(fl.pos.y), radius, fl.color)
+	radius := 16
+	for flname , fl in app.pathfollowers {
+		if flname == 'player' {
+			ctx.draw_circle_empty(int(fl.pos.x), int(fl.pos.y), radius, gx.blue)
+		}
+		pos := fl.pos
+		if fl.dir == 'right' {
+			ctx.draw_triangle_filled(
+				pos.x + radius/2, pos.y,
+				pos.x - radius/2, pos.y - radius/2,
+				pos.x - radius/2, pos.y + radius/2,
+				fl.color
+			)
+		} else if fl.dir == 'left' {
+			ctx.draw_triangle_filled(
+				pos.x - radius/2, pos.y,
+				pos.x + radius/2, pos.y - radius/2,
+				pos.x + radius/2, pos.y + radius/2,
+				fl.color
+			)
+		} else if fl.dir == 'up' {
+			ctx.draw_triangle_filled(
+				pos.x, pos.y - radius/2,
+				pos.x - radius/2, pos.y + radius/2,
+				pos.x + radius/2, pos.y + radius/2,
+				fl.color
+			)
+		} else if fl.dir == 'down' {
+			ctx.draw_triangle_filled(
+				pos.x, pos.y + radius/2,
+				pos.x - radius/2, pos.y - radius/2,
+				pos.x + radius/2, pos.y - radius/2,
+				fl.color
+			)
+		}
 	}
-
 	
-	// draw debug text
-	ctx.draw_text(0, 0, '$app.debug', gx.TextCfg{color: gx.blue size: 24})
-	ctx.show_fps()
-	ctx.end()
 
 	// moving follower
 	for fl_name , mut fl in app.pathfollowers {
@@ -204,17 +189,18 @@ fn frame(mut app App) {
 		fl.moving(mut app.grid_data)
 
 		// draw path
-		
-		pth := fl.path
-		pathsize := pth.len
+		// if fl_name != 'player' {
+		// 	pth := fl.path
+		// 	pathsize := pth.len
 
-		if pathsize >= 2 {
-			for i in 0..pathsize - 1{
-				pos1 := pth[i]
-				pos2 := pth[i + 1]
-				ctx.draw_line(pos1.x, pos1.y, pos2.x, pos2.y, gx.blue)
-			}
-		}
+		// 	if pathsize >= 2 {
+		// 		for i in 0..pathsize - 1{
+		// 			pos1 := pth[i]
+		// 			pos2 := pth[i + 1]
+		// 			ctx.draw_line(pos1.x, pos1.y, pos2.x, pos2.y, gx.blue)
+		// 		}
+		// 	}
+		// }
 
 		// move to random walkable cell on map
 		if fl_name != 'player' {
@@ -229,6 +215,23 @@ fn frame(mut app App) {
 			}
 		}
 	}
+
+	// draw player path
+	plpth := app.pathfollowers['player'].path
+	plpathsize := plpth.len
+
+	if plpathsize >= 2 {
+		for i in 0..plpathsize - 1{
+			pos1 := plpth[i]
+			pos2 := plpth[i + 1]
+			ctx.draw_line(pos1.x, pos1.y, pos2.x, pos2.y, gx.red)
+		}
+	}
+
+	// draw debug text
+	ctx.draw_text(0, 0, '$app.debug', gx.TextCfg{color: gx.blue size: 24})
+	ctx.show_fps()
+	ctx.end()
 }
 
 fn create_random_gridmap (mut app App) {
@@ -243,4 +246,14 @@ fn create_random_gridmap (mut app App) {
 		}
 	}
 	app.grid_data.cells[0].walkable = true
+	
+	// test
+	app.grid_test.clear()
+	for i in 0..app.grid_data.cols*app.grid_data.rows {
+		if app.grid_data.cells[i].walkable {
+			app.grid_test << 0
+		} else {
+			app.grid_test << 1
+		}
+	}
 }
