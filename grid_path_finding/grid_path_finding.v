@@ -11,8 +11,8 @@ pub mut:
 	pixelpos PixelPos
 	walkable bool = true
 
-	register string
-	reg_cell int = -1
+	fl_name string
+	fl_future string
 }
 
 pub struct GridData {
@@ -316,28 +316,24 @@ pub mut:
 	path []PixelPos
 	pos PixelPos
 	status int // 0 mean stop, 1 mean follow path
-	spd f32 = 0.05 // from 0.0 to 1.0
+	spd f32 = 0.02 // from 0.0 to 1.0
 	t f32 // from 0.0 to 1.0
 	a f32
 	b f32
 	step int
 
+	selected bool
 	cur_point int
 	next_point int
-	color gx.Color = gx.red
+	color gx.Color = gx.green
 	change_dir bool
 	change_point_to int
 	dir string = 'right'
+	reg_cell int = -1
+
 }
 
 pub fn (mut fl PathFollower) set_path(pth_of_pos []PixelPos, mut grid_data GridData) {
-	// unregistered cells
-	if fl.step != 0 {
-		for pos in fl.path {
-			cell_id := grid_data.get_id_from_pixel_pos(pos.x, pos.y)
-			grid_data.unregistered(cell_id, fl.name)
-		}
-	}
 	// set path
 	fl.path = pth_of_pos
 	fl.path[0] = fl.pos
@@ -367,21 +363,31 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 
 		// change path suddenly
 		if fl.change_dir {
+			grid_data.staying(fl.cur_point, mut fl)
 			new_pth := grid_data.path_finding(fl.cur_point, fl.change_point_to, true)
-			fl.set_path(new_pth, mut grid_data)
-			fl.start_move(fl.spd, mut grid_data)
+			if new_pth.len > 1 {
+				fl.set_path(new_pth, mut grid_data)
+				fl.start_move(fl.spd, mut grid_data)
+				fl.change_dir = false
+				return
+			}
 			fl.change_dir = false
-			return
 		}
 
-		// if next step not walkable
-		if !grid_data.cells[fl.next_point].walkable {
-			cur_id := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
-			grid_data.staying(cur_id)
-			id_end := grid_data.get_id_from_pixel_pos(fl.path[fl.path.len - 1].x, fl.path[fl.path.len - 1].y)
-			pth := grid_data.path_finding(cur_id, id_end, true)
-			fl.set_path(pth, mut grid_data)
-			fl.start_move(fl.spd, mut grid_data)
+		// register next point
+		reg_err := grid_data.register_next_point(fl.next_point, mut fl)
+		
+		if  reg_err == 1 || reg_err == 2 {
+			// registered
+			fl.reg_cell = fl.next_point
+		}
+
+		nextcell_name := grid_data.cells[fl.next_point].fl_name
+		nextcell_future := grid_data.cells[fl.next_point].fl_future
+		is_next_point_can_move_to := (nextcell_name == '' || nextcell_name == fl.name) && (nextcell_future == '' || nextcell_future == fl.name)
+
+		if !is_next_point_can_move_to {
+			
 			return
 		}
 
@@ -401,15 +407,15 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 		fl.step += 1
 		id_previous := grid_data.get_id_from_pixel_pos(fl.path[fl.step - 1].x, fl.path[fl.step - 1].y)
 		fl.cur_point = grid_data.get_id_from_pixel_pos(fl.path[fl.step].x, fl.path[fl.step].y)
-		grid_data.set_cell_walkable(fl.cur_point, false)
-		grid_data.set_cell_walkable(id_previous, true)
+		grid_data.staying(fl.cur_point, mut fl)
+		grid_data.leave(id_previous, mut fl)
 	}
 
 	// finish move
 	if fl.step == fl.path.len - 1 {
 		fl.pos = fl.path[fl.path.len - 1]
 		id_end := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
-		grid_data.staying(id_end)
+		
 		fl.status = 0
 	}
 }
@@ -420,39 +426,24 @@ pub fn (mut grid_data GridData) create_follower(name string, x f32, y f32) PathF
 		pos: PixelPos{x: x, y: y}
 	}
 	fl.cur_point = grid_data.get_id_from_pixel_pos(x, y)
-	grid_data.staying(fl.cur_point)
+	grid_data.staying(fl.cur_point, mut fl)
 	return fl
 }
 
-pub fn (mut grid_data GridData) register(cell_id int, mut fl PathFollower, n2_point int) int {
-	register := grid_data.cells[cell_id].register
-	if register == fl.name {
-		return 2
-	}
-	
-	if register != '' &&  register != fl.name{
-		return 0
-	}
-	grid_data.cells[cell_id].register = fl.name
-	grid_data.cells[cell_id].reg_cell = n2_point
-	return 1
+
+
+pub fn (mut grid_data GridData) staying(cell_id int, mut fl PathFollower) {
+	fl_name := fl.name
+	grid_data.cells[cell_id].fl_name = fl_name
+	grid_data.next_point_arrived(cell_id, mut fl)
+	fl.reg_cell = -1
 }
 
-pub fn (mut grid_data GridData) unregistered(cell_id int, name string) bool {
-	if grid_data.cells[cell_id].register == name {
-		grid_data.cells[cell_id].register = ''
-		grid_data.cells[cell_id].reg_cell = -1
-		return true
+pub fn (mut grid_data GridData) leave(cell_id int, mut fl PathFollower)  {
+	fl_name := fl.name
+	if grid_data.cells[cell_id].fl_name == fl_name {
+		grid_data.cells[cell_id].fl_name = ''
 	}
-	return false
-}
-
-pub fn (mut grid_data GridData) staying(cell_id int) {
-	grid_data.cells[cell_id].walkable = false
-}
-
-pub fn (mut grid_data GridData) leave(cell_id int)  {
-	grid_data.cells[cell_id].walkable = true
 }
 
 fn (mut fl PathFollower) set_dir() {
@@ -467,4 +458,32 @@ fn (mut fl PathFollower) set_dir() {
 	} else if dir_value < -1 {
 		fl.dir = 'up'
 	}
+}
+
+fn (mut grid_data GridData) register_next_point(next_point int, mut fl PathFollower) int {
+	fl_name := fl.name
+	nextcell_name := grid_data.cells[next_point].fl_name
+	nextcell_future := grid_data.cells[next_point].fl_future
+	hasnt_registered := nextcell_future == ''
+	is_empty := nextcell_name == '' || nextcell_name == fl.name
+	walkable := grid_data.cells[next_point].walkable
+	can_register := hasnt_registered && is_empty && walkable
+	if can_register{
+		grid_data.cells[next_point].fl_future = fl_name
+		return 1
+	}
+	is_fl_registered := nextcell_future == fl_name
+	if is_fl_registered {
+		return 2
+	}
+	return 0
+}
+
+fn (mut grid_data GridData) next_point_arrived(next_point int, mut fl PathFollower) int {
+	fl_name := fl.name
+	if grid_data.cells[next_point].fl_future == fl_name{
+		grid_data.cells[next_point].fl_future = ''
+		return 1
+	}
+	return 0
 }
