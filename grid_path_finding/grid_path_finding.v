@@ -4,6 +4,7 @@ module grid_path_finding
 
 import math {sqrt}
 import gx
+import rand
 
 pub struct GridCell {
 pub mut:
@@ -13,6 +14,10 @@ pub mut:
 
 	fl_name string
 	fl_future string
+
+	team int = -1
+	is_give_way bool
+	give_way_to int = -1
 }
 
 pub struct GridData {
@@ -314,6 +319,7 @@ pub struct PathFollower {
 pub mut:
 	name string
 	path []PixelPos
+	simple_calc_cost bool = true
 	pos PixelPos
 	status int // 0 mean stop, 1 mean follow path
 	spd f32 = 0.02 // from 0.0 to 1.0
@@ -330,6 +336,7 @@ pub mut:
 	change_point_to int
 	dir string = 'right'
 	reg_cell int = -1
+	team int
 
 }
 
@@ -347,15 +354,66 @@ pub fn (mut fl PathFollower) start_move(spd f32, mut grid_data GridData) {
 	fl.status = 1
 }
 
+pub fn (mut fl PathFollower) move_to_cell(cell_to int, mut grid_data GridData) {
+	if fl.status == 0 {
+		fl_at_cell := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
+		pth := grid_data.path_finding(fl_at_cell, cell_to, fl.simple_calc_cost)
+		fl.set_path(pth, mut grid_data)
+		if fl.path.len > 1 {
+			fl.start_move(fl.spd, mut grid_data)
+		}
+	} else {
+		fl.change_point_to = cell_to
+		fl.change_dir = true
+	}
+}
+
+pub fn (mut fl PathFollower) move_to_pos(x f32, y f32, mut grid_data GridData) {
+	cell_to := grid_data.get_id_from_pixel_pos(x, y)
+	if fl.status == 0 {
+		fl_at_cell := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
+		pth := grid_data.path_finding(fl_at_cell, cell_to, fl.simple_calc_cost)
+		fl.set_path(pth, mut grid_data)
+		if fl.path.len > 1 {
+			fl.start_move(fl.spd, mut grid_data)
+		}
+	} else {
+		fl.change_point_to = cell_to
+		fl.change_dir = true
+	}
+}
+
 pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
-	if fl.status != 1 || fl.path.len < 2 {
+	if fl.status == 0 {
+		fl.cur_point = grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
+		give_way_to := grid_data.cells[fl.cur_point].give_way_to
+		if give_way_to != -1 {
+			mut myneighbors := grid_data.get_neighbor_ids(fl.cur_point)
+			if myneighbors.len == 0 {
+				return
+			}
+			for i, v in myneighbors {
+				neighbor_cell := v
+				if neighbor_cell == give_way_to {
+					myneighbors.delete(i)
+				}
+			}
+
+			if myneighbors.len != 0 {
+				rn := rand.int_in_range(0, myneighbors.len) or {panic(err)}
+				cell_to := myneighbors[rn]
+				fl.move_to_cell(cell_to, mut grid_data)
+			}
+		}
 		return
 	}
-	
+	if fl.path.len < 2 {
+		return
+	}
+	fl.cur_point = grid_data.get_id_from_pixel_pos(fl.path[fl.step].x, fl.path[fl.step].y)
 	fl.pos.x = fl.path[fl.step].x + fl.a*fl.t
 	fl.pos.y = fl.path[fl.step].y + fl.b*fl.t
 	
-	fl.cur_point = grid_data.get_id_from_pixel_pos(fl.path[fl.step].x, fl.path[fl.step].y)
 	fl.next_point = grid_data.get_id_from_pixel_pos(fl.path[fl.step + 1].x, fl.path[fl.step + 1].y)
 	
 	// start step
@@ -364,7 +422,7 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 		// change path suddenly
 		if fl.change_dir {
 			grid_data.staying(fl.cur_point, mut fl)
-			new_pth := grid_data.path_finding(fl.cur_point, fl.change_point_to, true)
+			new_pth := grid_data.path_finding(fl.cur_point, fl.change_point_to, fl.simple_calc_cost)
 			if new_pth.len > 1 {
 				fl.set_path(new_pth, mut grid_data)
 				fl.start_move(fl.spd, mut grid_data)
@@ -384,13 +442,25 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 
 		nextcell_name := grid_data.cells[fl.next_point].fl_name
 		nextcell_future := grid_data.cells[fl.next_point].fl_future
-		is_next_point_can_move_to := (nextcell_name == '' || nextcell_name == fl.name) && (nextcell_future == '' || nextcell_future == fl.name)
+
+		is_next_point_can_move_to := (nextcell_name == '' || nextcell_name == fl.name) && 
+		(nextcell_future == '' || nextcell_future == fl.name)
 
 		if !is_next_point_can_move_to {
-			
+			is_next_point_is_stop_point_of_other := nextcell_name != fl.name &&
+			nextcell_name != '' &&
+			nextcell_future == ''
+
+			is_next_point_same_team := grid_data.cells[fl.next_point].team == fl.team
+
+			if is_next_point_is_stop_point_of_other && is_next_point_same_team {
+				grid_data.cells[fl.next_point].give_way_to = fl.cur_point
+				grid_data.cells[fl.next_point].is_give_way = true
+			}
 			return
 		}
-
+		grid_data.cells[fl.next_point].give_way_to = -1
+		grid_data.cells[fl.next_point].is_give_way = false
 		// set dir
 		fl.set_dir()
 	}
@@ -437,12 +507,16 @@ pub fn (mut grid_data GridData) staying(cell_id int, mut fl PathFollower) {
 	grid_data.cells[cell_id].fl_name = fl_name
 	grid_data.next_point_arrived(cell_id, mut fl)
 	fl.reg_cell = -1
+	grid_data.cells[cell_id].team = fl.team
+	// grid_data.cells[cell_id].walkable = false
 }
 
 pub fn (mut grid_data GridData) leave(cell_id int, mut fl PathFollower)  {
 	fl_name := fl.name
 	if grid_data.cells[cell_id].fl_name == fl_name {
+		grid_data.cells[cell_id].team = -1
 		grid_data.cells[cell_id].fl_name = ''
+		// grid_data.cells[cell_id].walkable = true
 	}
 }
 
@@ -487,3 +561,4 @@ fn (mut grid_data GridData) next_point_arrived(next_point int, mut fl PathFollow
 	}
 	return 0
 }
+
