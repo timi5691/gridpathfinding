@@ -12,7 +12,7 @@ const (
 	txt_cfg1 = gx.TextCfg{color: gx.gray size: 16}
 )
 
-struct SelectArea {mut: x int y int w int h int}
+struct SelectArea {mut: x int y int w int h int selecting bool}
 
 struct App {
 mut: 
@@ -28,19 +28,20 @@ mut:
 	pathfollowers map[string]gpfd.PathFollower
 
 	test_switch bool
-
-	selecting bool
 	select_area SelectArea
 }
 
 fn main() {
 	mut app := &App{gg: 0}
 	
-	cell_size := 64
+	cell_size := 32
 	width := 640
 	height := 640
 
-	app.grid_data = gpfd.create_grid_data(width/cell_size, height/cell_size, cell_size)
+	app.grid_data = gpfd.create_grid_data(
+		width/cell_size, 
+		height/cell_size, 
+		cell_size)
 	app.half_cell_size = app.grid_data.cell_size/2
 
 	app.gg = gg.new_context(
@@ -74,51 +75,41 @@ fn init(mut app App){
 	app.grid_data.cells = (go create_cells_from_grid(app.grid_test, app.grid_data)).wait()
 
 	mut walkables := (go app.grid_data.get_walkable_cells()).wait()
-	for i in 0..10 {
+	for i in 0..20 {
 		rn := rand.int_in_range(0, walkables.len) or {panic(err)}
 		cell := walkables[rn]
 		pos := app.grid_data.get_pixel_pos_center_cell_id(cell)
 		flname := i.str()
 		mut fl := app.grid_data.create_follower(flname, pos.x, pos.y)
+		fl.spd = 0.2
 		app.pathfollowers[flname] = fl
 		walkables.delete(rn)
 	}
-
-	
 
 }
 
 
 fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
-	click_at_cell := app.grid_data.get_id_from_pixel_pos(x, y)
+	cell_click := app.grid_data.get_id_from_pixel_pos(x, y)
 	match button {
 		.left {
 			app.select_area.x = int(x)
 			app.select_area.y = int(y)
 			for _, mut fl in app.pathfollowers {
 				fl_at_cell := app.grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
-				if fl_at_cell != click_at_cell {
+				if fl_at_cell != cell_click {
 					fl.selected = false
 				} else {
 					fl.selected = true
 				}
 			}
-			app.selecting = true
+			app.select_area.selecting = true
 		}
 		.right {
 			for _, mut fl in app.pathfollowers {
-				if fl.selected {
-					if fl.status == 0 {
-						fl_at_cell := app.grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
-						pth := app.grid_data.path_finding(fl_at_cell, click_at_cell, true)
-						fl.set_path(pth, mut app.grid_data)
-						if fl.path.len > 1 {
-							fl.start_move(fl.spd, mut app.grid_data)
-						}
-					} else {
-						fl.change_point_to = click_at_cell
-						fl.change_dir = true
-					}
+				if fl.selected{
+					fl.move_to_cell(cell_click, mut app.grid_data)
+					// fl.move_to_pos(x, y, mut app.grid_data)
 				}
 			}
 		}
@@ -129,7 +120,6 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 fn on_mouse_up(x f32, y f32, button gg.MouseButton, mut app App) {
 	match button {
 		.left {
-			// unclick_at_cell := app.grid_data.get_id_from_pixel_pos(x, y)
 			sa := app.select_area
 			for _, mut fl in app.pathfollowers {
 				cond1 := if sa.w >= 0 {fl.pos.x >= sa.x && fl.pos.x <= sa.x + sa.w} else {fl.pos.x >= sa.x + sa.w && fl.pos.x <= sa.x}
@@ -138,7 +128,7 @@ fn on_mouse_up(x f32, y f32, button gg.MouseButton, mut app App) {
 					fl.selected = true
 				}
 			}
-			app.selecting = false
+			app.select_area.selecting = false
 		}
 		.right {
 			
@@ -174,10 +164,7 @@ fn frame(mut app App) {
 	draw_grid_info(app.grid_data, app.grid_test, ctx)
 	draw_follower_info(app.pathfollowers, ctx)
 	// draw selecting rectangle
-	mut sa := &app.select_area
-	sa.w = ctx.mouse_pos_x - sa.x
-	sa.h = ctx.mouse_pos_y - sa.y
-	draw_selecting_rectangle(app.selecting, sa, ctx)
+	draw_selecting_rectangle(mut app.select_area, ctx)
 
 	// draw debug text
 	ctx.draw_text(0, 0, '$app.debug', gx.TextCfg{color: gx.blue size: 24})
@@ -281,38 +268,40 @@ fn draw_followers(followers map[string]gpfd.PathFollower, ctx gg.Context) {
 	}
 }
 
-fn draw_selecting_rectangle(selecting bool, sa SelectArea, ctx gg.Context) {
-	if selecting {
+fn draw_selecting_rectangle(mut sa SelectArea, ctx gg.Context) {
+	if sa.selecting {
+		sa.w = ctx.mouse_pos_x - sa.x
+		sa.h = ctx.mouse_pos_y - sa.y
 		ctx.draw_rect_empty(sa.x, sa.y, sa.w, sa.h, gx.green)
 	}
 }
 
 fn draw_grid_info(grid_data gpfd.GridData, grid_test []int, ctx gg.Context) {
 	half_cell_size := grid_data.cell_size/2
-	for i in 0..grid_test.len {
-		pos := grid_data.cells[i].pixelpos
+	// for i in 0..grid_test.len {
+	// 	pos := grid_data.cells[i].pixelpos
 		// cell_id_txt := i.str()
 		// is_cell_walkable := grid_data.is_cell_walkable(i)
 		// txt := 'id: $cell_id_txt w: $is_cell_walkable'
 		// txt := '$is_cell_walkable'
-		txt := grid_data.cells[i].fl_future
-		ctx.draw_text(
-			int(pos.x) + half_cell_size - ctx.text_width(txt)/2, 
-			int(pos.y) + half_cell_size - ctx.text_height(txt)/2,
-			txt,
-			gx.TextCfg{color: gx.purple, size: 16}
-		)
-	}
+
+		// txt := grid_data.cells[i].give_way_to.str()
+		// ctx.draw_text(
+		// 	int(pos.x) + half_cell_size - ctx.text_width(txt)/2, 
+		// 	int(pos.y) + half_cell_size - ctx.text_height(txt)/2,
+		// 	txt,
+		// 	gx.TextCfg{color: gx.purple, size: 16}
+		// )
+	// }
 }
 
 fn draw_follower_info(followers map[string]gpfd.PathFollower, ctx gg.Context) {
-	for _, fl in followers {
-		// txt := '$fl.reg_cell'
-		txt := ''
-		ctx.draw_text(
-			int(fl.pos.x), int(fl.pos.y),
-			txt,
-			gx.TextCfg{color: gx.purple, size: 16}
-		)
-	}
+	// for _, fl in followers {
+		// txt := ''
+		// ctx.draw_text(
+		// 	int(fl.pos.x), int(fl.pos.y),
+		// 	txt,
+		// 	gx.TextCfg{color: gx.purple, size: 16}
+		// )
+	// }
 }
