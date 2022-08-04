@@ -81,7 +81,7 @@ fn init(mut app App){
 		pos := app.grid_data.get_pixel_pos_center_cell_id(cell)
 		flname := i.str()
 		mut fl := app.grid_data.create_follower(flname, pos.x, pos.y)
-		fl.spd = 0.2
+		fl.spd = 0.1
 		app.pathfollowers[flname] = fl
 		walkables.delete(rn)
 	}
@@ -278,30 +278,26 @@ fn draw_selecting_rectangle(mut sa SelectArea, ctx gg.Context) {
 
 fn draw_grid_info(grid_data gpfd.GridData, grid_test []int, ctx gg.Context) {
 	half_cell_size := grid_data.cell_size/2
-	// for i in 0..grid_test.len {
-	// 	pos := grid_data.cells[i].pixelpos
-		// cell_id_txt := i.str()
-		// is_cell_walkable := grid_data.is_cell_walkable(i)
-		// txt := 'id: $cell_id_txt w: $is_cell_walkable'
-		// txt := '$is_cell_walkable'
-
-		// txt := grid_data.cells[i].give_way_to.str()
-		// ctx.draw_text(
-		// 	int(pos.x) + half_cell_size - ctx.text_width(txt)/2, 
-		// 	int(pos.y) + half_cell_size - ctx.text_height(txt)/2,
-		// 	txt,
-		// 	gx.TextCfg{color: gx.purple, size: 16}
-		// )
-	// }
+	for i in 0..grid_test.len {
+		pos := grid_data.cells[i].pixelpos
+		mut txt := ''
+		txt = '${grid_data.cells[i].fl_name}'
+		ctx.draw_text(
+			int(pos.x) + half_cell_size - ctx.text_width(txt)/2, 
+			int(pos.y) + half_cell_size - ctx.text_height(txt)/2,
+			txt,
+			gx.TextCfg{color: gx.purple, size: 16}
+		)
+	}
 }
 
 fn draw_follower_info(followers map[string]gpfd.PathFollower, ctx gg.Context) {
 	// for _, fl in followers {
-		// txt := ''
-		// ctx.draw_text(
-		// 	int(fl.pos.x), int(fl.pos.y),
-		// 	txt,
-		// 	gx.TextCfg{color: gx.purple, size: 16}
-		// )
+	// 	txt := ''
+	// 	ctx.draw_text(
+	// 		int(fl.pos.x), int(fl.pos.y),
+	// 		txt,
+	// 		gx.TextCfg{color: gx.purple, size: 16}
+	// 	)
 	// }
 }
