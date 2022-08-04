@@ -17,6 +17,7 @@ pub mut:
 
 	team int = -1
 	is_give_way bool
+	has_moving bool
 	give_way_to int = -1
 }
 
@@ -386,31 +387,49 @@ pub fn (mut fl PathFollower) move_to_pos(x f32, y f32, mut grid_data GridData) {
 pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 	if fl.status == 0 {
 		fl.cur_point = grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
+		grid_data.cells[fl.cur_point].has_moving = false
+		
 		give_way_to := grid_data.cells[fl.cur_point].give_way_to
+		mut empty_neighbors := []int{}
 		if give_way_to != -1 {
 			mut myneighbors := grid_data.get_neighbor_ids(fl.cur_point)
 			if myneighbors.len == 0 {
 				return
 			}
 			for i, v in myneighbors {
-				neighbor_cell := v
-				if neighbor_cell == give_way_to {
+				cell := v
+				cond1 := cell == give_way_to
+				cond2 := grid_data.cells[cell].has_moving == true
+				cond3 := grid_data.cells[cell].fl_name == ''
+				if cond3 {
+					empty_neighbors << v
+				}
+				if cond1 || cond2 {
 					myneighbors.delete(i)
 				}
 			}
-
-			if myneighbors.len != 0 {
-				rn := rand.int_in_range(0, myneighbors.len) or {panic(err)}
-				cell_to := myneighbors[rn]
+			if empty_neighbors.len != 0 {
+				rn := rand.int_in_range(0, empty_neighbors.len) or {panic(err)}
+				cell_to := empty_neighbors[rn]
 				fl.move_to_cell(cell_to, mut grid_data)
+			} else {
+				if myneighbors.len != 0 {
+					rn := rand.int_in_range(0, myneighbors.len) or {panic(err)}
+					cell_to := myneighbors[rn]
+					fl.move_to_cell(cell_to, mut grid_data)
+				}
 			}
 		}
 		return
 	}
+	
 	if fl.path.len < 2 {
 		return
 	}
+	
 	fl.cur_point = grid_data.get_id_from_pixel_pos(fl.path[fl.step].x, fl.path[fl.step].y)
+	grid_data.cells[fl.cur_point].has_moving = true
+	
 	fl.pos.x = fl.path[fl.step].x + fl.a*fl.t
 	fl.pos.y = fl.path[fl.step].y + fl.b*fl.t
 	
@@ -452,8 +471,10 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 			nextcell_future == ''
 
 			is_next_point_same_team := grid_data.cells[fl.next_point].team == fl.team
-
-			if is_next_point_is_stop_point_of_other && is_next_point_same_team {
+			is_next_point_not_give_way := !grid_data.cells[fl.next_point].is_give_way
+			if is_next_point_is_stop_point_of_other && 
+			is_next_point_same_team && 
+			is_next_point_not_give_way {
 				grid_data.cells[fl.next_point].give_way_to = fl.cur_point
 				grid_data.cells[fl.next_point].is_give_way = true
 			}
@@ -484,8 +505,7 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 	// finish move
 	if fl.step == fl.path.len - 1 {
 		fl.pos = fl.path[fl.path.len - 1]
-		id_end := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
-		
+		// id_end := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
 		fl.status = 0
 	}
 }
@@ -497,6 +517,7 @@ pub fn (mut grid_data GridData) create_follower(name string, x f32, y f32) PathF
 	}
 	fl.cur_point = grid_data.get_id_from_pixel_pos(x, y)
 	grid_data.staying(fl.cur_point, mut fl)
+	grid_data.cells[fl.cur_point].has_moving = false
 	return fl
 }
 
@@ -508,6 +529,11 @@ pub fn (mut grid_data GridData) staying(cell_id int, mut fl PathFollower) {
 	grid_data.next_point_arrived(cell_id, mut fl)
 	fl.reg_cell = -1
 	grid_data.cells[cell_id].team = fl.team
+	if fl.path.len == 0 {
+		grid_data.cells[cell_id].has_moving = false
+	} else {
+		grid_data.cells[cell_id].has_moving = true
+	}
 	// grid_data.cells[cell_id].walkable = false
 }
 
@@ -516,6 +542,7 @@ pub fn (mut grid_data GridData) leave(cell_id int, mut fl PathFollower)  {
 	if grid_data.cells[cell_id].fl_name == fl_name {
 		grid_data.cells[cell_id].team = -1
 		grid_data.cells[cell_id].fl_name = ''
+		grid_data.cells[cell_id].has_moving = false
 		// grid_data.cells[cell_id].walkable = true
 	}
 }
