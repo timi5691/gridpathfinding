@@ -34,7 +34,7 @@ mut:
 fn main() {
 	mut app := &App{gg: 0}
 	
-	cell_size := 32
+	cell_size := 16
 	width := 640
 	height := 640
 
@@ -108,8 +108,8 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 		.right {
 			for _, mut fl in app.pathfollowers {
 				if fl.selected{
-					fl.move_to_cell(cell_click, mut app.grid_data)
-					// fl.move_to_pos(x, y, mut app.grid_data)
+					fl.move_to_cell(cell_click, app.grid_data)
+					// fl.move_to_pos(x, y, app.grid_data)
 				}
 			}
 		}
@@ -281,7 +281,7 @@ fn draw_grid_info(grid_data gpfd.GridData, grid_test []int, ctx gg.Context) {
 	for i in 0..grid_test.len {
 		pos := grid_data.cells[i].pixelpos
 		mut txt := ''
-		txt = '${grid_data.cells[i].fl_name}'
+		txt = '${grid_data.cells[i].fl_future}'
 		ctx.draw_text(
 			int(pos.x) + half_cell_size - ctx.text_width(txt)/2, 
 			int(pos.y) + half_cell_size - ctx.text_height(txt)/2,
@@ -292,12 +292,12 @@ fn draw_grid_info(grid_data gpfd.GridData, grid_test []int, ctx gg.Context) {
 }
 
 fn draw_follower_info(followers map[string]gpfd.PathFollower, ctx gg.Context) {
-	// for _, fl in followers {
-	// 	txt := ''
-	// 	ctx.draw_text(
-	// 		int(fl.pos.x), int(fl.pos.y),
-	// 		txt,
-	// 		gx.TextCfg{color: gx.purple, size: 16}
-	// 	)
-	// }
+	for _, fl in followers {
+		txt := '${fl.status}'
+		ctx.draw_text(
+			int(fl.pos.x), int(fl.pos.y),
+			txt,
+			gx.TextCfg{color: gx.purple, size: 16}
+		)
+	}
 }
