@@ -341,27 +341,27 @@ pub mut:
 
 }
 
-pub fn (mut fl PathFollower) set_path(pth_of_pos []PixelPos, mut grid_data GridData) {
+pub fn (mut fl PathFollower) set_path(pth_of_pos []PixelPos, grid_data GridData) {
 	// set path
 	fl.path = pth_of_pos
 	fl.path[0] = fl.pos
 	
 }
 
-pub fn (mut fl PathFollower) start_move(spd f32, mut grid_data GridData) {
+pub fn (mut fl PathFollower) start_move(spd f32, grid_data GridData) {
 	fl.spd = spd
 	fl.t = 0
 	fl.step = 0
 	fl.status = 1
 }
 
-pub fn (mut fl PathFollower) move_to_cell(cell_to int, mut grid_data GridData) {
+pub fn (mut fl PathFollower) move_to_cell(cell_to int, grid_data GridData) {
 	if fl.status == 0 {
 		fl_at_cell := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
-		pth := grid_data.path_finding(fl_at_cell, cell_to, fl.simple_calc_cost)
-		fl.set_path(pth, mut grid_data)
+		pth := (go grid_data.path_finding(fl_at_cell, cell_to, fl.simple_calc_cost)).wait()
+		fl.set_path(pth, grid_data)
 		if fl.path.len > 1 {
-			fl.start_move(fl.spd, mut grid_data)
+			fl.start_move(fl.spd, grid_data)
 		}
 	} else {
 		fl.change_point_to = cell_to
@@ -369,14 +369,14 @@ pub fn (mut fl PathFollower) move_to_cell(cell_to int, mut grid_data GridData) {
 	}
 }
 
-pub fn (mut fl PathFollower) move_to_pos(x f32, y f32, mut grid_data GridData) {
+pub fn (mut fl PathFollower) move_to_pos(x f32, y f32, grid_data GridData) {
 	cell_to := grid_data.get_id_from_pixel_pos(x, y)
 	if fl.status == 0 {
 		fl_at_cell := grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
 		pth := grid_data.path_finding(fl_at_cell, cell_to, fl.simple_calc_cost)
-		fl.set_path(pth, mut grid_data)
+		fl.set_path(pth, grid_data)
 		if fl.path.len > 1 {
-			fl.start_move(fl.spd, mut grid_data)
+			fl.start_move(fl.spd, grid_data)
 		}
 	} else {
 		fl.change_point_to = cell_to
@@ -411,12 +411,12 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 			if empty_neighbors.len != 0 {
 				rn := rand.int_in_range(0, empty_neighbors.len) or {panic(err)}
 				cell_to := empty_neighbors[rn]
-				fl.move_to_cell(cell_to, mut grid_data)
+				fl.move_to_cell(cell_to, grid_data)
 			} else {
 				if myneighbors.len != 0 {
 					rn := rand.int_in_range(0, myneighbors.len) or {panic(err)}
 					cell_to := myneighbors[rn]
-					fl.move_to_cell(cell_to, mut grid_data)
+					fl.move_to_cell(cell_to, grid_data)
 				}
 			}
 		}
@@ -443,8 +443,8 @@ pub fn (mut fl PathFollower) moving(mut grid_data GridData) {
 			grid_data.staying(fl.cur_point, mut fl)
 			new_pth := grid_data.path_finding(fl.cur_point, fl.change_point_to, fl.simple_calc_cost)
 			if new_pth.len > 1 {
-				fl.set_path(new_pth, mut grid_data)
-				fl.start_move(fl.spd, mut grid_data)
+				fl.set_path(new_pth, grid_data)
+				fl.start_move(fl.spd, grid_data)
 				fl.change_dir = false
 				return
 			}
