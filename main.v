@@ -29,6 +29,12 @@ mut:
 
 	test_switch bool
 	select_area SelectArea
+
+	// map[end_cell]map[cell]cost: cost to every walkable cells
+	costs_data map[int]map[int]int
+	final_regs map[int]map[string]bool
+
+	final_cell int
 }
 
 fn main() {
@@ -36,7 +42,7 @@ fn main() {
 	
 	cell_size := 16
 	width := 640
-	height := 640
+	height := 480
 
 	app.grid_data = gpfd.create_grid_data(
 		width/cell_size, 
@@ -75,7 +81,8 @@ fn init(mut app App){
 	app.grid_data.cells = (go create_cells_from_grid(app.grid_test, app.grid_data)).wait()
 
 	mut walkables := (go app.grid_data.get_walkable_cells()).wait()
-	for i in 0..20 {
+	// create 100 followers
+	for i in 0..100 {
 		rn := rand.int_in_range(0, walkables.len) or {panic(err)}
 		cell := walkables[rn]
 		pos := app.grid_data.get_pixel_pos_center_cell_id(cell)
@@ -95,6 +102,7 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 		.left {
 			app.select_area.x = int(x)
 			app.select_area.y = int(y)
+			app.select_area.selecting = true
 			for _, mut fl in app.pathfollowers {
 				fl_at_cell := app.grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
 				if fl_at_cell != cell_click {
@@ -103,19 +111,20 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 					fl.selected = true
 				}
 			}
-			app.select_area.selecting = true
 		}
 		.right {
-			for _, mut fl in app.pathfollowers {
-				if fl.selected{
-					fl.move_to_cell(cell_click, app.grid_data)
-					// fl.move_to_pos(x, y, app.grid_data)
-				}
+			if _ := app.costs_data[cell_click] {} else {
+				app.costs_data[cell_click] = (go app.grid_data.calc_cells_cost(cell_click)).wait()
 			}
+			app.final_cell = cell_click
+
+			followers_set_final_cell(cell_click, mut app.pathfollowers, mut app.final_regs, mut app.costs_data)
 		}
 		else {}
 	}
 }
+
+
 
 fn on_mouse_up(x f32, y f32, button gg.MouseButton, mut app App) {
 	match button {
@@ -126,6 +135,7 @@ fn on_mouse_up(x f32, y f32, button gg.MouseButton, mut app App) {
 				cond2 := if sa.h >= 0 {fl.pos.y >= sa.y && fl.pos.y <= sa.y + sa.h} else {fl.pos.y >= sa.y + sa.h && fl.pos.y <= sa.y}
 				if cond1 && cond2 {
 					fl.selected = true
+					
 				}
 			}
 			app.select_area.selecting = false
@@ -158,22 +168,34 @@ fn frame(mut app App) {
 	ctx.begin()
 	
 	draw_grid(app.grid_data, app.grid_test, ctx)
-	
 	draw_followers(app.pathfollowers, ctx)
 
-	draw_grid_info(app.grid_data, app.grid_test, ctx)
-	draw_follower_info(app.pathfollowers, ctx)
 	// draw selecting rectangle
 	draw_selecting_rectangle(mut app.select_area, ctx)
+	// draw cost table example
+	// if costs := app.costs_data[app.final_cell] {
+	// 	for cell, cost in costs {
+	// 		pos := app.grid_data.get_pixel_pos_center_cell_id(cell)
+	// 		txt := cost.str()
+	// 		drx := int(pos.x) - ctx.text_width(txt)/2
+	// 		dry := int(pos.y) - ctx.text_height(txt)/2
+	// 		ctx.draw_text(drx, dry, txt, gx.TextCfg{color: gx.gray size: 14})
+	// 	}
+	// }
 
+	// draw_grid_info(app.grid_data, app.grid_test, ctx)
+	
 	// draw debug text
-	ctx.draw_text(0, 0, '$app.debug', gx.TextCfg{color: gx.blue size: 24})
+	// app.debug = ''
+	// ctx.draw_text(96, 0, '$app.debug', gx.TextCfg{color: gx.blue size: 24})
 	ctx.show_fps()
 	ctx.end()
 
-	// moving follower
-	for _ , mut fl in app.pathfollowers {
-		fl.moving(mut app.grid_data)
+	for _, mut fl in app.pathfollowers {
+		if mut cost_table := app.costs_data[fl.final_cell] {
+			fl.update_path(mut cost_table, app.grid_data)
+		}
+		fl.update_moving(mut app.costs_data[fl.cur_point], mut app.grid_data)
 	}
 }
 
@@ -229,6 +251,14 @@ fn draw_grid(grid_data gpfd.GridData, grid_test []int, ctx gg.Context) {
 	
 }
 
+fn draw_selecting_rectangle(mut sa SelectArea, ctx gg.Context) {
+	if sa.selecting {
+		sa.w = ctx.mouse_pos_x - sa.x
+		sa.h = ctx.mouse_pos_y - sa.y
+		ctx.draw_rect_empty(sa.x, sa.y, sa.w, sa.h, gx.green)
+	}
+}
+
 fn draw_followers(followers map[string]gpfd.PathFollower, ctx gg.Context) {
 	radius := 16
 	for _, fl in followers {
@@ -268,20 +298,12 @@ fn draw_followers(followers map[string]gpfd.PathFollower, ctx gg.Context) {
 	}
 }
 
-fn draw_selecting_rectangle(mut sa SelectArea, ctx gg.Context) {
-	if sa.selecting {
-		sa.w = ctx.mouse_pos_x - sa.x
-		sa.h = ctx.mouse_pos_y - sa.y
-		ctx.draw_rect_empty(sa.x, sa.y, sa.w, sa.h, gx.green)
-	}
-}
-
 fn draw_grid_info(grid_data gpfd.GridData, grid_test []int, ctx gg.Context) {
 	half_cell_size := grid_data.cell_size/2
 	for i in 0..grid_test.len {
 		pos := grid_data.cells[i].pixelpos
-		mut txt := ''
-		txt = '${grid_data.cells[i].fl_future}'
+		mut txt := '${grid_data.cells[i].fl_name}'
+		// txt = ''
 		ctx.draw_text(
 			int(pos.x) + half_cell_size - ctx.text_width(txt)/2, 
 			int(pos.y) + half_cell_size - ctx.text_height(txt)/2,
@@ -291,13 +313,27 @@ fn draw_grid_info(grid_data gpfd.GridData, grid_test []int, ctx gg.Context) {
 	}
 }
 
-fn draw_follower_info(followers map[string]gpfd.PathFollower, ctx gg.Context) {
-	for _, fl in followers {
-		txt := '${fl.status}'
-		ctx.draw_text(
-			int(fl.pos.x), int(fl.pos.y),
-			txt,
-			gx.TextCfg{color: gx.purple, size: 16}
-		)
+fn followers_set_final_cell(final_cell int, mut followers map[string]gpfd.PathFollower, mut final_regs map[int]map[string]bool, mut costs_data map[int]map[int]int) {
+	for _, mut fl in followers {
+		if fl.selected {
+			fl.visited_cells = map[int]bool{}
+			if _ := final_regs[fl.final_cell][fl.name] {
+				final_regs[fl.final_cell].delete(fl.name)
+				if final_regs[fl.final_cell].len == 0 {
+					costs_data.delete(fl.final_cell)
+					final_regs.delete(fl.final_cell)
+					final_regs[final_cell][fl.name] = true
+					fl.final_cell = final_cell
+				} else {
+					final_regs[final_cell][fl.name] = true
+					fl.final_cell = final_cell
+				}
+			} else {
+				final_regs[final_cell][fl.name] = true
+				fl.final_cell = final_cell
+			}
+			final_regs[final_cell][fl.name] = true
+		}
 	}
 }
+
