@@ -12,4 +12,4 @@ feature:
 - pathfinding
 - pathfollower
 
-video: https://youtu.be/6H7dprSwr74 (the code on github hasn't update)
+video: https://youtu.be/6H7dprSwr74 (the code hasn't clean)
