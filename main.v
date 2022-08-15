@@ -7,12 +7,17 @@ import gx
 import rand
 import rand.seed
 import grid_path_finding as gpfd
+import camera2d
 
 const (
 	txt_cfg1 = gx.TextCfg{color: gx.gray size: 16}
 )
 
-struct SelectArea {mut: x int y int w int h int selecting bool}
+struct SelectArea {
+mut:
+	x int y int w int h int selecting bool
+	cam_click_x int cam_click_y int
+}
 
 struct App {
 mut: 
@@ -23,18 +28,17 @@ mut:
 	half_cell_size int
 	grid_test []int
 
-	grid_random_size int = 7
-
 	pathfollowers map[string]gpfd.PathFollower
 
-	test_switch bool
+	click_cell int
+
 	select_area SelectArea
 
 	// map[end_cell]map[cell]cost: cost to every walkable cells
 	costs_data map[int]map[int]int
 	final_regs map[int]map[string]bool
-
-	final_cell int
+	cam2d camera2d.Camera2d
+	
 }
 
 fn main() {
@@ -45,10 +49,12 @@ fn main() {
 	height := 480
 
 	app.grid_data = gpfd.create_grid_data(
-		width/cell_size, 
-		height/cell_size, 
+		100,
+		100,
 		cell_size)
 	app.half_cell_size = app.grid_data.cell_size/2
+
+	app.cam2d.set_pos(0, 0)
 
 	app.gg = gg.new_context(
 		bg_color: gx.black
@@ -82,7 +88,7 @@ fn init(mut app App){
 
 	mut walkables := (go app.grid_data.get_walkable_cells()).wait()
 	// create 100 followers
-	for i in 0..100 {
+	for i in 0..200 {
 		rn := rand.int_in_range(0, walkables.len) or {panic(err)}
 		cell := walkables[rn]
 		pos := app.grid_data.get_pixel_pos_center_cell_id(cell)
@@ -97,11 +103,14 @@ fn init(mut app App){
 
 
 fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
-	cell_click := app.grid_data.get_id_from_pixel_pos(x, y)
+	cell_click := app.grid_data.get_id_from_pixel_pos(x + app.cam2d.x, y + app.cam2d.y)
+	app.click_cell = cell_click
 	match button {
 		.left {
 			app.select_area.x = int(x)
 			app.select_area.y = int(y)
+			app.select_area.cam_click_x = app.cam2d.x
+			app.select_area.cam_click_y = app.cam2d.y
 			app.select_area.selecting = true
 			for _, mut fl in app.pathfollowers {
 				fl_at_cell := app.grid_data.get_id_from_pixel_pos(fl.pos.x, fl.pos.y)
@@ -114,11 +123,9 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 		}
 		.right {
 			if _ := app.costs_data[cell_click] {} else {
-				app.costs_data[cell_click] = (go app.grid_data.calc_cells_cost(cell_click)).wait()
+				app.costs_data[cell_click] = app.grid_data.calc_cells_cost(cell_click)
 			}
-			app.final_cell = cell_click
-
-			followers_set_final_cell(cell_click, mut app.pathfollowers, mut app.final_regs, mut app.costs_data)
+			gpfd.followers_set_final_cell(cell_click, mut app.pathfollowers, mut app.final_regs, mut app.costs_data)
 		}
 		else {}
 	}
@@ -131,11 +138,10 @@ fn on_mouse_up(x f32, y f32, button gg.MouseButton, mut app App) {
 		.left {
 			sa := app.select_area
 			for _, mut fl in app.pathfollowers {
-				cond1 := if sa.w >= 0 {fl.pos.x >= sa.x && fl.pos.x <= sa.x + sa.w} else {fl.pos.x >= sa.x + sa.w && fl.pos.x <= sa.x}
-				cond2 := if sa.h >= 0 {fl.pos.y >= sa.y && fl.pos.y <= sa.y + sa.h} else {fl.pos.y >= sa.y + sa.h && fl.pos.y <= sa.y}
+				cond1 := if sa.w >= 0 {fl.pos.x - app.cam2d.x >= sa.x && fl.pos.x - app.cam2d.x <= sa.x + sa.w} else {fl.pos.x - app.cam2d.x >= sa.x + sa.w && fl.pos.x - app.cam2d.x <= sa.x}
+				cond2 := if sa.h >= 0 {fl.pos.y - app.cam2d.y >= sa.y && fl.pos.y - app.cam2d.y <= sa.y + sa.h} else {fl.pos.y - app.cam2d.y >= sa.y + sa.h && fl.pos.y - app.cam2d.y <= sa.y}
 				if cond1 && cond2 {
 					fl.selected = true
-					
 				}
 			}
 			app.select_area.selecting = false
@@ -154,10 +160,22 @@ fn on_key_down(key gg.KeyCode, m gg.Modifier, mut app App) {
 			app.gg.quit()
 		}
 		.o {
-			app.test_switch = if app.test_switch {false} else {true}
+			
 		}
 		.n {
 			
+		}
+		.right {
+			app.cam2d.x += 4
+		}
+		.left {
+			app.cam2d.x -= 4
+		}
+		.up {
+			app.cam2d.y -= 4
+		}
+		.down {
+			app.cam2d.y += 4
 		}
 		else {}
 	}
@@ -167,26 +185,29 @@ fn frame(mut app App) {
 	ctx := app.gg
 	ctx.begin()
 	
-	draw_grid(app.grid_data, app.grid_test, ctx)
-	draw_followers(app.pathfollowers, ctx)
+	draw_grid(app.grid_data, app.grid_test, ctx, app.cam2d)
+	draw_followers(app.pathfollowers, ctx, app.cam2d, app.grid_data)
 
 	// draw selecting rectangle
-	draw_selecting_rectangle(mut app.select_area, ctx)
+	draw_selecting_rectangle(mut app.select_area, ctx, app.cam2d)
 	// draw cost table example
-	// if costs := app.costs_data[app.final_cell] {
+	// if costs := app.costs_data[app.click_cell] {
 	// 	for cell, cost in costs {
-	// 		pos := app.grid_data.get_pixel_pos_center_cell_id(cell)
-	// 		txt := cost.str()
-	// 		drx := int(pos.x) - ctx.text_width(txt)/2
-	// 		dry := int(pos.y) - ctx.text_height(txt)/2
-	// 		ctx.draw_text(drx, dry, txt, gx.TextCfg{color: gx.gray size: 14})
+	// 		in_screen := is_cell_in_screen(cell, app.grid_data, app.cam2d, 640, 480)
+	// 		if in_screen {
+	// 			pos := app.grid_data.get_pixel_pos_center_cell_id(cell)
+	// 			txt := cost.str()
+	// 			drx := int(pos.x) - ctx.text_width(txt)/2 - app.cam2d.x
+	// 			dry := int(pos.y) - ctx.text_height(txt)/2 - app.cam2d.y
+	// 			ctx.draw_text(drx, dry, txt, gx.TextCfg{color: gx.gray size: 14})
+	// 		} else {continue}
 	// 	}
 	// }
 
-	// draw_grid_info(app.grid_data, app.grid_test, ctx)
+	// draw_grid_info(app.grid_data, app.grid_test, ctx, app.cam2d)
 	
 	// draw debug text
-	// app.debug = ''
+	// app.debug = ctx.mouse_pos_x.str()
 	// ctx.draw_text(96, 0, '$app.debug', gx.TextCfg{color: gx.blue size: 24})
 	ctx.show_fps()
 	ctx.end()
@@ -196,6 +217,17 @@ fn frame(mut app App) {
 			fl.update_path(mut cost_table, app.grid_data)
 		}
 		fl.update_moving(mut app.costs_data[fl.cur_point], mut app.grid_data)
+	}
+
+	if ctx.mouse_pos_x >= 640 - app.grid_data.cell_size*2 {
+		app.cam2d.x += 4
+	} else if ctx.mouse_pos_x <= 0 + app.grid_data.cell_size*2 {
+		app.cam2d.x -= 4
+	}
+	if ctx.mouse_pos_y >= 480 - app.grid_data.cell_size*2 {
+		app.cam2d.y += 4
+	} else if ctx.mouse_pos_y <= 0 + app.grid_data.cell_size*2 {
+		app.cam2d.y -= 4
 	}
 }
 
@@ -224,48 +256,63 @@ fn create_cells_from_grid (grid []int, grid_data gpfd.GridData) map[int]gpfd.Gri
 	return rs
 }
 
-fn draw_grid(grid_data gpfd.GridData, grid_test []int, ctx gg.Context) {
+fn draw_grid(grid_data gpfd.GridData, grid_test []int, ctx gg.Context, cam2d camera2d.Camera2d) {
 	// half_cell_size := grid_data.cell_size/2
 	for i in 0..grid_test.len {
+		in_screen := is_cell_in_screen(i, grid_data, cam2d, 640, 480)
+		if !in_screen {
+			continue
+		}
 		pos := grid_data.cells[i].pixelpos
-
 		// draw walkable cells
 		if grid_test[i] == 0 {
 			ctx.draw_rect_filled(
-				pos.x, pos.y, 
+				pos.x - cam2d.x, pos.y - cam2d.y, 
 				grid_data.cell_size, grid_data.cell_size,
 				gx.white
 			)
 		}
 
 		// draw cell border
-		ctx.draw_rect_empty(
-			pos.x, pos.y, 
-			grid_data.cell_size, grid_data.cell_size,
-			gx.gray
-		)
-
-		
+		// ctx.draw_rect_empty(
+		// 	pos.x - cam2d.x, pos.y - cam2d.y, 
+		// 	grid_data.cell_size, grid_data.cell_size,
+		// 	gx.gray
+		// )
 	}
-
-	
 }
 
-fn draw_selecting_rectangle(mut sa SelectArea, ctx gg.Context) {
+fn draw_selecting_rectangle(mut sa SelectArea, ctx gg.Context, cam2d camera2d.Camera2d) {
 	if sa.selecting {
+		if sa.cam_click_x != cam2d.x {
+			sa.x += sa.cam_click_x - cam2d.x
+			sa.cam_click_x = cam2d.x
+		}
+		if sa.cam_click_y != cam2d.y {
+			sa.y += sa.cam_click_y - cam2d.y
+			sa.cam_click_y = cam2d.y
+		}
 		sa.w = ctx.mouse_pos_x - sa.x
 		sa.h = ctx.mouse_pos_y - sa.y
-		ctx.draw_rect_empty(sa.x, sa.y, sa.w, sa.h, gx.green)
+		ctx.draw_rect_empty(sa.x, sa.y, sa.w, sa.h, gx.blue)
 	}
 }
 
-fn draw_followers(followers map[string]gpfd.PathFollower, ctx gg.Context) {
+fn draw_followers(followers map[string]gpfd.PathFollower, ctx gg.Context, cam2d camera2d.Camera2d, grid_data gpfd.GridData) {
 	radius := 16
 	for _, fl in followers {
-		if fl.selected {
-			ctx.draw_circle_empty(int(fl.pos.x), int(fl.pos.y), radius, gx.blue)
+		in_screen := is_cell_in_screen(fl.cur_point, grid_data, cam2d, 640, 480)
+		if !in_screen {
+			continue
 		}
-		pos := fl.pos
+		if fl.selected {
+			ctx.draw_circle_empty(int(fl.pos.x) - cam2d.x, int(fl.pos.y) - cam2d.y, radius, gx.blue)
+		}
+		pos := gpfd.PixelPos{
+			x: fl.pos.x - cam2d.x
+			y: fl.pos.y - cam2d.y
+		}
+
 		if fl.dir == 'right' {
 			ctx.draw_triangle_filled(
 				pos.x + radius/2, pos.y,
@@ -298,10 +345,13 @@ fn draw_followers(followers map[string]gpfd.PathFollower, ctx gg.Context) {
 	}
 }
 
-fn draw_grid_info(grid_data gpfd.GridData, grid_test []int, ctx gg.Context) {
+fn draw_grid_info(grid_data gpfd.GridData, grid_test []int, ctx gg.Context, cam2d camera2d.Camera2d) {
 	half_cell_size := grid_data.cell_size/2
 	for i in 0..grid_test.len {
-		pos := grid_data.cells[i].pixelpos
+		pos := gpfd.PixelPos {
+			x: grid_data.cells[i].pixelpos.x
+			y: grid_data.cells[i].pixelpos.y
+		}
 		mut txt := '${grid_data.cells[i].fl_name}'
 		// txt = ''
 		ctx.draw_text(
@@ -313,27 +363,16 @@ fn draw_grid_info(grid_data gpfd.GridData, grid_test []int, ctx gg.Context) {
 	}
 }
 
-fn followers_set_final_cell(final_cell int, mut followers map[string]gpfd.PathFollower, mut final_regs map[int]map[string]bool, mut costs_data map[int]map[int]int) {
-	for _, mut fl in followers {
-		if fl.selected {
-			fl.visited_cells = map[int]bool{}
-			if _ := final_regs[fl.final_cell][fl.name] {
-				final_regs[fl.final_cell].delete(fl.name)
-				if final_regs[fl.final_cell].len == 0 {
-					costs_data.delete(fl.final_cell)
-					final_regs.delete(fl.final_cell)
-					final_regs[final_cell][fl.name] = true
-					fl.final_cell = final_cell
-				} else {
-					final_regs[final_cell][fl.name] = true
-					fl.final_cell = final_cell
-				}
-			} else {
-				final_regs[final_cell][fl.name] = true
-				fl.final_cell = final_cell
-			}
-			final_regs[final_cell][fl.name] = true
-		}
-	}
-}
 
+fn is_cell_in_screen(cell int, grid_data gpfd.GridData, cam2d camera2d.Camera2d, screen_width int, screen_height int) bool {
+	cell_pos := grid_data.cells[cell].pixelpos
+	real_cell_pos := gpfd.PixelPos{
+		x: cell_pos.x - cam2d.x
+		y: cell_pos.y - cam2d.y
+	}
+	
+	xvalid := real_cell_pos.x + grid_data.cell_size >= 0 && real_cell_pos.x <= screen_width
+	yvalid := real_cell_pos.y + grid_data.cell_size >= 0 && real_cell_pos.y <= screen_height
+	
+	return xvalid && yvalid
+}
