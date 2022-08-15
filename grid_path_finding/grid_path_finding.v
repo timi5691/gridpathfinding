@@ -269,6 +269,116 @@ pub fn (data GridData) find_another_next_end(start int, end int) int {
 pub fn (data GridData) has_cell(cell_id int) bool {
 	return cell_id >= 0 && cell_id < data.rows*data.cols
 }
+
+fn get_neighbor_dir(cell int, neighbor int) string {
+	dir_value := neighbor - cell
+	if dir_value == 1 {
+		return 'right'
+	}
+	if dir_value == -1 {
+		return 'left'
+	}
+	if dir_value > 1 {
+		return 'down'
+	}
+	if dir_value < -1 {
+		return 'up'
+	}
+	return ''
+}
+
+fn get_dir_to_cell(grpos1 GridPos, grpos2 GridPos) string {
+	dcol := grpos2.col - grpos1.col
+	drow := grpos2.row - grpos1.row
+	is_vmoving := myabs(drow) > myabs(dcol)
+	if is_vmoving {
+		return if drow > 0 {'down'} else if drow < 0 {'up'}	 else {''}
+	} else {
+		return if dcol > 0 {'right'} else if dcol < 0 {'left'} else {''}
+	}
+	return ''
+}
+
+pub fn (grid_data GridData) get_walkable_cells_around(c int) []int {
+	mut rs := []int{}
+	mut times := 1
+	cols := grid_data.cols
+	c_grid_pos := grid_data.cell_id_to_gridpos(c)
+	times_limit := if grid_data.cols > grid_data.rows {grid_data.cols} else {grid_data.rows}
+	for rs.len == 0 && times <= times_limit{
+		rs = []int{}
+		up_start := c - times*cols - times
+		mut up_edge := []int{}
+		for i in 0..2*times {
+			a := up_start + i
+			up_edge << a
+			a_grid_pos := grid_data.cell_id_to_gridpos(a)
+			cond1 := c_grid_pos.row - a_grid_pos.row == times
+			cond2 := a_grid_pos.row >= 0 && a_grid_pos.row < grid_data.rows
+			cond3 := a_grid_pos.col >= 0 && a_grid_pos.col < cols
+			cond4 := grid_data.is_cell_walkable(a)
+			if cond1 && cond2 && cond3 && cond4 {
+				rs << a
+			}
+		}
+
+		right_start := up_edge.last() + 1
+		mut right_edge := []int{}
+		for i in 0..2*times {
+			a := right_start + i*cols
+			right_edge << a
+			a_grid_pos := grid_data.cell_id_to_gridpos(a)
+			cond1 := a_grid_pos.col - c_grid_pos.col == times
+			cond2 := a_grid_pos.col < grid_data.cols && a_grid_pos.col >= 0
+			cond3 := a_grid_pos.row >= 0 && a_grid_pos.row < grid_data.rows
+			cond4 := grid_data.is_cell_walkable(a)
+			if cond1 && cond2 && cond3 && cond4 {
+				rs << a
+			}
+		}
+
+		down_start := right_edge.last() + cols
+		mut down_edge := []int{}
+		for i in 0..2*times {
+			a := down_start - i
+			down_edge << a
+			a_grid_pos := grid_data.cell_id_to_gridpos(a)
+			cond1 := a_grid_pos.row - c_grid_pos.row == times
+			cond2 := a_grid_pos.row < grid_data.rows && a_grid_pos.row >= 0
+			cond3 := a_grid_pos.col >= 0 && a_grid_pos.col < cols
+			cond4 := grid_data.is_cell_walkable(a)
+			if cond1 && cond2 && cond3 && cond4 {
+				rs << a
+			}
+		}
+
+		left_start := down_edge.last() - 1
+		mut left_edge := []int{}
+		for i in 0..2*times {
+			a := left_start - i*cols
+			left_edge << a
+			a_grid_pos := grid_data.cell_id_to_gridpos(a)
+			cond1 := c_grid_pos.col - a_grid_pos.col == times
+			cond2 := a_grid_pos.col >= 0 && a_grid_pos.col < cols
+			cond3 := a_grid_pos.row >= 0 && a_grid_pos.row < grid_data.rows
+			cond4 := grid_data.is_cell_walkable(a)
+			if cond1 && cond2 && cond3 && cond4 {
+				rs << a
+			}
+		}
+
+
+
+		if rs.len != 0 {
+			return rs
+		}
+
+		times += 1
+	}
+
+	return rs
+}
+
 ////////////////////////////////////////////////
 ///////// GRID ASTAR
 pub fn (data GridData) path_finding(start int, to int, optimized bool) []PixelPos {
@@ -620,85 +730,7 @@ fn (mut grid_data GridData) next_point_arrived(next_point int, mut fl PathFollow
 	return 0
 }
 
-pub fn (grid_data GridData) get_walkable_cells_around(c int) []int {
-	mut rs := []int{}
-	mut times := 1
-	cols := grid_data.cols
-	c_grid_pos := grid_data.cell_id_to_gridpos(c)
-	times_limit := if grid_data.cols > grid_data.rows {grid_data.cols} else {grid_data.rows}
-	for rs.len == 0 && times <= times_limit{
-		rs = []int{}
-		up_start := c - times*cols - times
-		mut up_edge := []int{}
-		for i in 0..2*times {
-			a := up_start + i
-			up_edge << a
-			a_grid_pos := grid_data.cell_id_to_gridpos(a)
-			cond1 := c_grid_pos.row - a_grid_pos.row == times
-			cond2 := a_grid_pos.row >= 0 && a_grid_pos.row < grid_data.rows
-			cond3 := a_grid_pos.col >= 0 && a_grid_pos.col < cols
-			cond4 := grid_data.is_cell_walkable(a)
-			if cond1 && cond2 && cond3 && cond4 {
-				rs << a
-			}
-		}
 
-		right_start := up_edge.last() + 1
-		mut right_edge := []int{}
-		for i in 0..2*times {
-			a := right_start + i*cols
-			right_edge << a
-			a_grid_pos := grid_data.cell_id_to_gridpos(a)
-			cond1 := a_grid_pos.col - c_grid_pos.col == times
-			cond2 := a_grid_pos.col < grid_data.cols && a_grid_pos.col >= 0
-			cond3 := a_grid_pos.row >= 0 && a_grid_pos.row < grid_data.rows
-			cond4 := grid_data.is_cell_walkable(a)
-			if cond1 && cond2 && cond3 && cond4 {
-				rs << a
-			}
-		}
-
-		down_start := right_edge.last() + cols
-		mut down_edge := []int{}
-		for i in 0..2*times {
-			a := down_start - i
-			down_edge << a
-			a_grid_pos := grid_data.cell_id_to_gridpos(a)
-			cond1 := a_grid_pos.row - c_grid_pos.row == times
-			cond2 := a_grid_pos.row < grid_data.rows && a_grid_pos.row >= 0
-			cond3 := a_grid_pos.col >= 0 && a_grid_pos.col < cols
-			cond4 := grid_data.is_cell_walkable(a)
-			if cond1 && cond2 && cond3 && cond4 {
-				rs << a
-			}
-		}
-
-		left_start := down_edge.last() - 1
-		mut left_edge := []int{}
-		for i in 0..2*times {
-			a := left_start - i*cols
-			left_edge << a
-			a_grid_pos := grid_data.cell_id_to_gridpos(a)
-			cond1 := c_grid_pos.col - a_grid_pos.col == times
-			cond2 := a_grid_pos.col >= 0 && a_grid_pos.col < cols
-			cond3 := a_grid_pos.row >= 0 && a_grid_pos.row < grid_data.rows
-			cond4 := grid_data.is_cell_walkable(a)
-			if cond1 && cond2 && cond3 && cond4 {
-				rs << a
-			}
-		}
-
-
-
-		if rs.len != 0 {
-			return rs
-		}
-
-		times += 1
-	}
-
-	return rs
-}
 
 pub fn (grid_data GridData) get_empty_cells_around(c int) []int {
 	mut rs := []int{}
@@ -787,6 +819,7 @@ pub fn (grid_data GridData) get_empty_cells_around(c int) []int {
 ////////////////////////////////////////////////////////////////////
 ////
 ////////// DIJISTRA
+
 pub fn (grid_data GridData) calc_cells_cost (cell_to int) map[int]int {
 	mut costs := {cell_to: 0}
 	mut opentable := {cell_to: 0}
@@ -795,7 +828,7 @@ pub fn (grid_data GridData) calc_cells_cost (cell_to int) map[int]int {
 
 	for opentable.len != 0 {
 		mut new_opentable := map[int]int{}
-		for cell in opentable.keys() {
+		for cell, _ in opentable {
 			neighbors := grid_data.get_neighbor_ids(cell)
 			for n in neighbors {
 				if _ := costs[n] {} else {
@@ -808,23 +841,6 @@ pub fn (grid_data GridData) calc_cells_cost (cell_to int) map[int]int {
 		step += 1
 	}
 	return costs
-}
-
-pub fn dir_to_neighbor(p int, n int) string {
-	dir_value := n - p
-	if dir_value == 1 {
-		return 'right'
-	}
-	if dir_value == -1 {
-		return 'left'
-	}
-	if dir_value > 1 {
-		return 'down'
-	}
-	if dir_value < -1 {
-		return 'up'
-	}
-	return ''
 }
 
 fn (fl PathFollower) find_next_point(neighbors []int, cost_table map[int]int, grid_data GridData) int {
@@ -1028,31 +1044,26 @@ pub fn (mut fl PathFollower) update_moving(mut cost_table map[int]int, mut grid_
 	}
 }
 
-fn get_neighbor_dir(cell int, neighbor int) string {
-	dir_value := neighbor - cell
-	if dir_value == 1 {
-		return 'right'
+pub fn followers_set_final_cell(final_cell int, mut followers map[string]PathFollower, mut final_regs map[int]map[string]bool, mut costs_data map[int]map[int]int) {
+	for _, mut fl in followers {
+		if fl.selected {
+			fl.visited_cells = map[int]bool{}
+			if _ := final_regs[fl.final_cell][fl.name] {
+				final_regs[fl.final_cell].delete(fl.name)
+				if final_regs[fl.final_cell].len == 0 {
+					costs_data.delete(fl.final_cell)
+					final_regs.delete(fl.final_cell)
+					final_regs[final_cell][fl.name] = true
+					fl.final_cell = final_cell
+				} else {
+					final_regs[final_cell][fl.name] = true
+					fl.final_cell = final_cell
+				}
+			} else {
+				final_regs[final_cell][fl.name] = true
+				fl.final_cell = final_cell
+			}
+			final_regs[final_cell][fl.name] = true
+		}
 	}
-	if dir_value == -1 {
-		return 'left'
-	}
-	if dir_value > 1 {
-		return 'down'
-	}
-	if dir_value < -1 {
-		return 'up'
-	}
-	return ''
-}
-
-fn get_dir_to_cell(grpos1 GridPos, grpos2 GridPos) string {
-	dcol := grpos2.col - grpos1.col
-	drow := grpos2.row - grpos1.row
-	is_vmoving := myabs(drow) > myabs(dcol)
-	if is_vmoving {
-		return if drow > 0 {'down'} else if drow < 0 {'up'}	 else {''}
-	} else {
-		return if dcol > 0 {'right'} else if dcol < 0 {'left'} else {''}
-	}
-	return ''
 }
