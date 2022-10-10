@@ -60,7 +60,7 @@ pub fn draw(app mystructs.App) {
 	}
 
 	// draw debug text
-	ctx.draw_text(0, 0, app.debug, gx.TextCfg{color: gx.white size: 24})
+	ctx.draw_text(0, 0, app.debug, gx.TextCfg{color: gx.white size: 18})
 	
 	ctx.end()
 }
