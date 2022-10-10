@@ -12,6 +12,4 @@ simplify the library
 - module astar2d
 - module dijkstra for all cell
 
-test this project: 
- cd to src folder
- v run main.v
+test this project: cd to src folder, type: v run main.v
