@@ -23,7 +23,7 @@ pub fn init(mut app mystructs.App) {
 		app.grid,
 		app.is_cross
 	)
-	app.debug = 'Hello world'
+	app.debug = 'yellow line is astar path, green numbers is cost of a cell to destinate location calculated by dijkstra'
 }
 
 pub fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app mystructs.App) {
