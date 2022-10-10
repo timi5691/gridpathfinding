@@ -3,7 +3,6 @@ module update
 import mystructs
 import gx
 
-[live]
 pub fn frame(mut app mystructs.App) {
 	draw(app)
 }
