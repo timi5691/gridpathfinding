@@ -5,53 +5,41 @@ import gx
 import mystructs
 import input
 import update
+import draw
+import grid2d
+
 
 
 fn main() {
 	mut app := &mystructs.App{gg: 0}
-
-	app.walkable_map = [
-	//   0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20
-		[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 0
-		[0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0], // 1
-		[0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0], // 2
-		[0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0], // 3
-		[0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0], // 4
-		[0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0], // 5
-		[0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0], // 6
-		[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0], // 7
-		[0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0], // 8
-		[0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0], // 9
-		[0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0], // 10
-		[0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0], // 11
-		[0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0], // 12
-		[0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0], // 13
-		[0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0], // 14
-		[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0], // 15
-		[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0], // 16
-		[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0], // 17
-		[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0], // 18
-		[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0], // 19
-		[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 20
-	]
-
+	app.cols = 20
+	app.rows = 15
+	app.cell_size = 32
 	
-
 	app.gg = gg.new_context(
 		bg_color: gx.black
-		width: app.cell_size*app.walkable_map[0].len
-		height: app.cell_size*app.walkable_map.len
-		window_title: "TEST ASTAR"
+		width: app.cols*app.cell_size
+		height: app.rows*app.cell_size
+		window_title: "PATH FINDING"
 
-		init_fn: input.init
+		init_fn: init
+		frame_fn: frame
 		click_fn: input.on_mouse_down
 		unclick_fn: input.on_mouse_up
 		keydown_fn: input.on_key_down
-		frame_fn: update.frame
 
 		user_data: app
 	)
-
 	app.gg.run()
+}
+
+
+fn init(mut app mystructs.App) {
+	app.grid = grid2d.create_grid(app.cols, app.rows, app)
+}
+
+fn frame(mut app mystructs.App) {
+	update.update(mut app)
+	draw.draw(app)
 }
 

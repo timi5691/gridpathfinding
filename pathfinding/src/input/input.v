@@ -1,58 +1,33 @@
 module input
 
-import gg
 import mystructs
+import gg
 import grid2d
 import astar2d
-import dijkstraforall as dijkstra
-
-pub fn init(mut app mystructs.App) {
-	app.grid = grid2d.create_grid_from_walkable_map(app.walkable_map)
-	
-	// find path using astar for one cell
-	app.astar_path = astar2d.get_path(
-		app.pos1['col'], app.pos1['row'], 
-		app.pos2['col'], app.pos2['row'], 
-		app.grid,
-		app.is_cross, app.optimize
-	)
-	
-	// find path for all cell using dijkstra
-	app.dijkstra_map = dijkstra.create_dijkstra_map(
-		app.pos2['col'], app.pos2['row'],
-		app.grid,
-		app.is_cross
-	)
-	app.debug = 'yellow line is astar path, green numbers is cost of a cell to destinate location'
-}
+import dijkstra
 
 pub fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app mystructs.App) {
 	col := int(x/app.cell_size)
 	row := int(y/app.cell_size)
-	cell := '$col $row'
+	cell := row*app.cols + col
 	match button {
 		.left {
-			if _ := app.grid[cell] {
-				app.grid[cell]['walkable'] = if app.grid[cell]['walkable'] == 1 {0} else {1}
+			if app.game_state == 0 {
+				if app.grid[cell]['walkable'] == 1 {
+					app.grid[cell]['walkable'] = 0
+				} else {
+					app.grid[cell]['walkable'] = 1
+				}
 			}
+			
 		}
 		.right {
-			app.pos2 = {'col': col, 'row': row}
-			
-			// find path using astar for one cell
-			app.astar_path = astar2d.get_path(
-				app.pos1['col'], app.pos1['row'], 
-				app.pos2['col'], app.pos2['row'], 
-				app.grid,
-				app.is_cross, app.optimize
-			)
-			
-			// find path for all cell using dijkstra
-			app.dijkstra_map = dijkstra.create_dijkstra_map(
-				app.pos2['col'], app.pos2['row'],
-				app.grid,
-				app.is_cross
-			)
+			app.entities[0]['xto'] = col*app.cell_size + app.half
+			app.entities[0]['yto'] = row*app.cell_size + app.half
+			e0cell := grid2d.xytocell(app.entities[0]['x'], app.entities[0]['y'], app)
+			e0cellto := grid2d.xytocell(app.entities[0]['xto'], app.entities[0]['yto'], app)
+			app.astar_paths[0] = astar2d.get_path(e0cell, e0cellto, app)
+			app.dijkstra_maps[0] = dijkstra.create_dijkstra_map(e0cellto, app)
 		}
 		else {}
 	}
@@ -92,6 +67,16 @@ pub fn on_key_down(key gg.KeyCode, m gg.Modifier, mut app mystructs.App) {
 		}
 		.down {
 			
+		}
+		.t {
+			
+		}
+		.c {
+			if app.switches['is_cross'] {
+				app.switches['is_cross'] = false
+			} else {
+				app.switches['is_cross'] = true
+			}
 		}
 		else {}
 	}
