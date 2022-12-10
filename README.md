@@ -8,8 +8,6 @@ If this project help you reduce time to develop, you can give me a cup of coffee
 
 https://paypal.me/ngtrth5691?country.x=VN&locale.x=vi_VN
 
-simplify the library
-- module astar2d
-- module dijkstra for all cell
+add cross moving
 
 test this project: cd to src folder, type: v run main.v
