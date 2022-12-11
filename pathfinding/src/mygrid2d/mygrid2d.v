@@ -27,12 +27,12 @@ pub mut:
 
 pub struct Cell {
 pub mut:
-	id         int
-	gridpos    GridPos
-	walkable   bool
-	has_mover  bool
-	registered bool
-	register   int
+	id             int
+	gridpos        GridPos
+	walkable       bool
+	has_mover      bool
+	registered     bool
+	register       int
 	signal_giveway bool
 }
 
@@ -41,6 +41,7 @@ pub mut:
 	rows          int
 	cols          int
 	cell_size     f32
+	cross         bool = true
 	cells         map[int]Cell
 	steps_to_stop map[int]int
 }
@@ -406,8 +407,8 @@ pub fn (mover Mover) is_target_reached() bool {
 	return mover.target_gridpos == mover.grid_pos
 }
 
-fn (mut mover Mover) find_neighbors(costdata map[int]int, grid2d Grid2d) []CellCost {
-	gridpos_neighbors := grid2d.cell_get_neighbors(mover.grid_pos, true)
+fn (mut mover Mover) find_neighbors(costdata map[int]int, grid2d Grid2d, cross bool) []CellCost {
+	gridpos_neighbors := grid2d.cell_get_neighbors(mover.grid_pos, cross)
 	id_neighbors := grid2d.gridpos_neighbors_to_idpos_neighbors(gridpos_neighbors)
 	mut cost_neighbors := []CellCost{}
 	for cell_id in id_neighbors {
@@ -452,7 +453,7 @@ pub fn (mut mover Mover) find_next_pos(costdata map[int]int, cost_neighbors []Ce
 	dx := nxtgridpos.col - curgridpos.col
 	dy := nxtgridpos.row - curgridpos.row
 	rotdata := '${dx} ${dy}'
-	mover.rot = rotdata_dict[rotdata]
+	mover.rot = mygrid2d.rotdata_dict[rotdata]
 }
 
 pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid2d) bool {
@@ -464,7 +465,7 @@ pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid
 
 		grid2d.cells[mover.id_pos].has_mover = true
 		mover.unreg(mover.id_pos, mut grid2d)
-		
+
 		if mover.is_target_reached() {
 			mover.visited_cells.clear()
 			return false
@@ -487,14 +488,14 @@ pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid
 		}
 
 		if costdata := djmaps[mover.costdata_id] {
-			cost_neighbors := mover.find_neighbors(costdata, grid2d)
+			cost_neighbors := mover.find_neighbors(costdata, grid2d, grid2d.cross)
 			mover.find_next_pos(costdata, cost_neighbors, mut grid2d)
 		}
 		return false
 	}
 
 	mut adjust_speed := f32(1.0)
-	is_same_col:= mover.start_pos.x - mover.next_pos.x == 0
+	is_same_col := mover.start_pos.x - mover.next_pos.x == 0
 	is_same_row := mover.start_pos.y - mover.next_pos.y == 0
 	if !is_same_col && !is_same_row {
 		adjust_speed = 0.7
