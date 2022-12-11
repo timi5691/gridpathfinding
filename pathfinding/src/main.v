@@ -179,6 +179,7 @@ fn init(mut app App) {
 	app.grid2d.cell_size = 20
 	app.grid2d.rows = 32
 	app.grid2d.cols = 32
+	app.grid2d.cross = true
 
 	app.grid2d_random_walkable()
 
@@ -255,7 +256,7 @@ fn draw_debug_each_cell(app App, px int, py int, cell mygrid2d.Cell) {
 fn draw_djmap_test_each_cell(app App, px int, py int, cell mygrid2d.Cell) {
 	ctx := app.gg
 	if app.djmap_test.len != 0 {
-		ctx.draw_text(px, py, '${app.djmap_test[cell.id]}', gx.TextCfg{color: gx.white, size: 12})
+		ctx.draw_text(px, py, '${app.djmap_test[cell.id]}', gx.TextCfg{ color: gx.white, size: 12 })
 	}
 }
 
@@ -265,7 +266,6 @@ fn draw_movers(mover_map map[int]mygrid2d.Mover, ctx gg.Context, imgs []gg.Image
 		y := mover.current_pos.y
 		rot := mover.rot
 		if mover.selected {
-			ctx.draw_circle_empty(x, y, 10, gx.blue)
 			ctx.draw_image_with_config(gg.DrawImageConfig{
 				flip_x: false
 				flip_y: false
@@ -287,6 +287,8 @@ fn draw_movers(mover_map map[int]mygrid2d.Mover, ctx gg.Context, imgs []gg.Image
 				color: gx.green
 			})
 		} else {
+			mut cl := gx.green
+			cl.a = 100
 			ctx.draw_image_with_config(gg.DrawImageConfig{
 				flip_x: false
 				flip_y: false
@@ -305,10 +307,11 @@ fn draw_movers(mover_map map[int]mygrid2d.Mover, ctx gg.Context, imgs []gg.Image
 				}
 				rotate: rot
 				z: 0
-				color: gx.green
+				color: cl
 			})
 		}
 
-		ctx.draw_text(int(mover.current_pos.x), int(mover.current_pos.y), mover.debug, gx.TextCfg{color: gx.red})
+		ctx.draw_text(int(mover.current_pos.x), int(mover.current_pos.y), mover.debug,
+			gx.TextCfg{ color: gx.red })
 	}
 }
