@@ -25,6 +25,7 @@ mut:
 
 	djmap_test     map[int]int
 	djmaps         map[int]map[int]int
+	stop_costs     map[int]int
 	mover_world    myecount.EWorld
 	mover_map      map[int]mygrid2d.Mover
 	rectselectarea RectSelectArea
@@ -83,8 +84,8 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 		.right {
 			if _ := app.djmaps[cell_click] {
 			} else {
-				app.djmaps[cell_click] = app.grid2d.create_dijkstra_map(gridpos_click,
-					true)
+				app.djmaps[cell_click] = (spawn app.grid2d.create_dijkstra_map(gridpos_click,
+					true)).wait()
 			}
 			app.djmap_test = app.djmaps[cell_click].clone()
 			for _, mut mover in app.mover_map {
@@ -154,7 +155,7 @@ pub fn (mut app App) create_movers() {
 		}
 	}
 
-	for _ in 0 .. 50 {
+	for _ in 0 .. 1000 {
 		n := rand.int_in_range(0, walkable_cells.len) or { panic(err) }
 		new_mover_id := app.mover_world.new_entity()
 		app.mover_map[new_mover_id] = app.grid2d.create_mover(walkable_cells[n].gridpos)
@@ -176,9 +177,9 @@ fn init_images(mut app App) {
 fn init(mut app App) {
 	init_images(mut app)
 
-	app.grid2d.cell_size = 20
-	app.grid2d.rows = 32
-	app.grid2d.cols = 32
+	app.grid2d.cell_size = 10
+	app.grid2d.rows = 64
+	app.grid2d.cols = 64
 	app.grid2d.cross = true
 
 	app.grid2d_random_walkable()
@@ -207,6 +208,11 @@ fn frame(mut app App) {
 		}
 	}
 
+	for target_id in app.djmaps.keys() {
+		app.grid2d.steps_to_stop[target_id] = app.grid2d.find_steps_to_stop(target_id,
+			app.grid2d.cross)
+	}
+
 	ctx.begin()
 
 	for _, cell in app.grid2d.cells {
@@ -230,7 +236,7 @@ fn frame(mut app App) {
 	ctx.end()
 
 	for _, mut mover in app.mover_map {
-		// mover.debug = '${mover.is_target_reached()}'
+		// mover.debug = '${mover.visited_cells}'
 		mover.step_moving(app.djmaps, mut app.grid2d)
 	}
 }
@@ -271,10 +277,10 @@ fn draw_movers(mover_map map[int]mygrid2d.Mover, ctx gg.Context, imgs []gg.Image
 				flip_y: false
 				img: &imgs[0]
 				img_rect: gg.Rect{
-					x: x - 8
-					y: y - 8
-					width: 16
-					height: 16
+					x: x - 4
+					y: y - 4
+					width: 8
+					height: 8
 				}
 				part_rect: gg.Rect{
 					x: 0
@@ -294,10 +300,10 @@ fn draw_movers(mover_map map[int]mygrid2d.Mover, ctx gg.Context, imgs []gg.Image
 				flip_y: false
 				img: &imgs[0]
 				img_rect: gg.Rect{
-					x: x - 8
-					y: y - 8
-					width: 16
-					height: 16
+					x: x - 4
+					y: y - 4
+					width: 8
+					height: 8
 				}
 				part_rect: gg.Rect{
 					x: 0
