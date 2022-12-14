@@ -1,18 +1,5 @@
 module mygrid2d
 
-const (
-	rotdata_dict = {
-		'1 0':   0
-		'1 -1':  45
-		'0 -1':  90
-		'-1 -1': 135
-		'-1 0':  180
-		'-1 1':  225
-		'0 1':   270
-		'1 1':   315
-	}
-)
-
 pub struct GridPos {
 pub mut:
 	row int
@@ -307,6 +294,47 @@ pub fn (grid2d Grid2d) get_cells_around(c int, _round int, round_limit int) []in
 	return rs
 }
 
+pub fn (grid2d Grid2d) get_cells_around_ver2(cell_to int, cross bool) []int {
+	if grid2d.cells[cell_to].walkable && !grid2d.cells[cell_to].has_mover {
+		return [cell_to]
+	}
+
+	mut costs := {
+		cell_to: 0
+	}
+
+	mut opentable := [cell_to]
+
+	mut step := 1
+
+	for opentable.len != 0 {
+		mut new_opentable := []int{}
+		for cell in opentable {
+			cell_pos := grid2d.id_to_gridpos(cell)
+			neighbors := grid2d.cell_get_neighbors(cell_pos, cross)
+			mut is_stop := false
+			for n in neighbors {
+				id_n := grid2d.gridpos_to_id(n)
+				if _ := costs[id_n] {
+				} else {
+					costs[id_n] = step
+					new_opentable << id_n
+				}
+				if grid2d.cells[id_n].walkable && !grid2d.cells[id_n].has_mover {
+					is_stop = true
+				}
+			}
+			if is_stop {
+				return new_opentable
+			}
+		}
+		opentable = new_opentable.clone()
+		step += 1
+	}
+
+	return []int{}
+}
+
 pub fn (grid2d Grid2d) create_dijkstra_map(pos_to GridPos, cross bool) map[int]int {
 	cell_to := grid2d.gridpos_to_id(pos_to)
 	mut costs := {
@@ -453,7 +481,17 @@ pub fn (mut mover Mover) find_next_pos(costdata map[int]int, cost_neighbors []Ce
 	dx := nxtgridpos.col - curgridpos.col
 	dy := nxtgridpos.row - curgridpos.row
 	rotdata := '${dx} ${dy}'
-	mover.rot = mygrid2d.rotdata_dict[rotdata]
+	rotdata_dict := {
+		'1 0':   0
+		'1 -1':  45
+		'0 -1':  90
+		'-1 -1': 135
+		'-1 0':  180
+		'-1 1':  225
+		'0 1':   270
+		'1 1':   315
+	}
+	mover.rot = rotdata_dict[rotdata]
 }
 
 pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid2d) bool {
@@ -472,7 +510,8 @@ pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid
 		}
 
 		target_id := grid2d.gridpos_to_id(mover.target_gridpos)
-		end_ids := grid2d.get_cells_around(target_id, 0, 100)
+		// end_ids := grid2d.get_cells_around(target_id, 0, 100)
+		end_ids := grid2d.get_cells_around_ver2(target_id, grid2d.cross)
 		if end_ids.len > 0 {
 			stop_cost := djmaps[mover.costdata_id][end_ids[0]]
 			if djmaps[mover.costdata_id][mover.id_pos] <= stop_cost {
@@ -485,6 +524,9 @@ pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid
 
 		if mover.id_pos !in mover.visited_cells {
 			mover.visited_cells << mover.id_pos
+			if mover.visited_cells.len > 16 {
+				mover.visited_cells.delete(0)
+			}
 		}
 
 		if costdata := djmaps[mover.costdata_id] {
