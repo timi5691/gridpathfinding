@@ -209,92 +209,7 @@ pub fn calc_steps(gridpos1 GridPos, gridpos2 GridPos) int {
 	return myabs(gridpos2.row - gridpos1.row) + myabs(gridpos2.col - gridpos1.col)
 }
 
-pub fn (grid2d Grid2d) get_cells_around(c int, _round int, round_limit int) []int {
-	mut round := _round
-	if round == 0 {
-		if grid2d.cells[c].walkable && !grid2d.cells[c].has_mover {
-			return [c]
-		} else {
-			round += 1
-		}
-	}
-	mut rs := []int{}
-	mut times := round
-	cols := grid2d.cols
-	c_grid_pos := grid2d.id_to_gridpos(c)
-	for rs.len == 0 && times <= round_limit {
-		rs = []int{}
-		up_start := c - times * cols - times
-		mut up_edge := []int{}
-		for i in 0 .. 2 * times {
-			a := up_start + i
-			up_edge << a
-			a_grid_pos := grid2d.id_to_gridpos(a)
-			cond1 := c_grid_pos.row - a_grid_pos.row == times
-			cond2 := a_grid_pos.row >= 0 && a_grid_pos.row < grid2d.rows
-			cond3 := a_grid_pos.col >= 0 && a_grid_pos.col < cols
-			cond4 := grid2d.cells[a].walkable && !grid2d.cells[a].has_mover
-			if cond1 && cond2 && cond3 && cond4 {
-				rs << a
-			}
-		}
-
-		right_start := up_edge.last() + 1
-		mut right_edge := []int{}
-		for i in 0 .. 2 * times {
-			a := right_start + i * cols
-			right_edge << a
-			a_grid_pos := grid2d.id_to_gridpos(a)
-			cond1 := a_grid_pos.col - c_grid_pos.col == times
-			cond2 := a_grid_pos.col < grid2d.cols && a_grid_pos.col >= 0
-			cond3 := a_grid_pos.row >= 0 && a_grid_pos.row < grid2d.rows
-			cond4 := grid2d.cells[a].walkable && !grid2d.cells[a].has_mover
-			if cond1 && cond2 && cond3 && cond4 {
-				rs << a
-			}
-		}
-
-		down_start := right_edge.last() + cols
-		mut down_edge := []int{}
-		for i in 0 .. 2 * times {
-			a := down_start - i
-			down_edge << a
-			a_grid_pos := grid2d.id_to_gridpos(a)
-			cond1 := a_grid_pos.row - c_grid_pos.row == times
-			cond2 := a_grid_pos.row < grid2d.rows && a_grid_pos.row >= 0
-			cond3 := a_grid_pos.col >= 0 && a_grid_pos.col < cols
-			cond4 := grid2d.cells[a].walkable && !grid2d.cells[a].has_mover
-			if cond1 && cond2 && cond3 && cond4 {
-				rs << a
-			}
-		}
-
-		left_start := down_edge.last() - 1
-		mut left_edge := []int{}
-		for i in 0 .. 2 * times {
-			a := left_start - i * cols
-			left_edge << a
-			a_grid_pos := grid2d.id_to_gridpos(a)
-			cond1 := c_grid_pos.col - a_grid_pos.col == times
-			cond2 := a_grid_pos.col >= 0 && a_grid_pos.col < cols
-			cond3 := a_grid_pos.row >= 0 && a_grid_pos.row < grid2d.rows
-			cond4 := grid2d.cells[a].walkable && !grid2d.cells[a].has_mover
-			if cond1 && cond2 && cond3 && cond4 {
-				rs << a
-			}
-		}
-
-		if rs.len != 0 {
-			return rs
-		}
-
-		times += 1
-	}
-
-	return rs
-}
-
-pub fn (grid2d Grid2d) get_cells_around_ver2(cell_to int, cross bool) []int {
+pub fn (grid2d Grid2d) get_cells_around(cell_to int, cross bool) []int {
 	if grid2d.cells[cell_to].walkable && !grid2d.cells[cell_to].has_mover {
 		return [cell_to]
 	}
@@ -333,6 +248,47 @@ pub fn (grid2d Grid2d) get_cells_around_ver2(cell_to int, cross bool) []int {
 	}
 
 	return []int{}
+}
+
+pub fn (grid2d Grid2d) find_steps_to_stop(cell_to int, cross bool) int {
+	if grid2d.cells[cell_to].walkable && !grid2d.cells[cell_to].has_mover {
+		return 0
+	}
+
+	mut costs := {
+		cell_to: 0
+	}
+
+	mut opentable := [cell_to]
+
+	mut step := 1
+
+	for opentable.len != 0 {
+		mut new_opentable := []int{}
+		for cell in opentable {
+			cell_pos := grid2d.id_to_gridpos(cell)
+			neighbors := grid2d.cell_get_neighbors(cell_pos, cross)
+			mut is_stop := false
+			for n in neighbors {
+				id_n := grid2d.gridpos_to_id(n)
+				if _ := costs[id_n] {
+				} else {
+					costs[id_n] = step
+					new_opentable << id_n
+				}
+				if grid2d.cells[id_n].walkable && !grid2d.cells[id_n].has_mover {
+					is_stop = true
+				}
+			}
+			if is_stop {
+				return step
+			}
+		}
+		opentable = new_opentable.clone()
+		step += 1
+	}
+
+	return -1
 }
 
 pub fn (grid2d Grid2d) create_dijkstra_map(pos_to GridPos, cross bool) map[int]int {
@@ -510,21 +466,20 @@ pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid
 		}
 
 		target_id := grid2d.gridpos_to_id(mover.target_gridpos)
-		// end_ids := grid2d.get_cells_around(target_id, 0, 100)
-		end_ids := grid2d.get_cells_around_ver2(target_id, grid2d.cross)
-		if end_ids.len > 0 {
-			stop_cost := djmaps[mover.costdata_id][end_ids[0]]
-			if djmaps[mover.costdata_id][mover.id_pos] <= stop_cost {
-				mover.visited_cells.clear()
-				mover.target_pos = mover.current_pos
-				mover.target_gridpos = grid2d.pixelpos_to_gridpos(mover.target_pos)
-				return false
+		if stop_cost := grid2d.steps_to_stop[target_id] {
+			if stop_cost != -1 {
+				if djmaps[mover.costdata_id][mover.id_pos] <= stop_cost {
+					mover.visited_cells.clear()
+					mover.target_pos = mover.current_pos
+					mover.target_gridpos = grid2d.pixelpos_to_gridpos(mover.target_pos)
+					return false
+				}
 			}
 		}
 
 		if mover.id_pos !in mover.visited_cells {
 			mover.visited_cells << mover.id_pos
-			if mover.visited_cells.len > 16 {
+			if mover.visited_cells.len > 32 {
 				mover.visited_cells.delete(0)
 			}
 		}
