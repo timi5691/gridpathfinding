@@ -23,11 +23,10 @@ mut:
 	imgs   []gg.Image
 	grid2d mygrid2d.Grid2d
 
-	djmap_test     map[int]int
-	djmaps         map[int]map[int]int
-	stop_costs     map[int]int
-	mover_world    myecount.EWorld
-	mover_map      map[int]mygrid2d.Mover
+	djmap_test map[int]int
+
+	mover_world myecount.EWorld
+
 	rectselectarea RectSelectArea
 }
 
@@ -69,7 +68,7 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 	cell_click := app.grid2d.gridpos_to_id(gridpos_click)
 	match button {
 		.left {
-			for _, mut mover in app.mover_map {
+			for _, mut mover in app.grid2d.mover_map {
 				if mygrid2d.myabs(int(pixelpos_click.x) - int(mover.current_pos.x)) <= int(app.grid2d.cell_size / 2)
 					&& mygrid2d.myabs(int(pixelpos_click.y) - int(mover.current_pos.y)) <= int(app.grid2d.cell_size / 2) {
 					mover.selected = true
@@ -82,14 +81,16 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 			}
 		}
 		.right {
-			if _ := app.djmaps[cell_click] {
+			if _ := app.grid2d.djmaps[cell_click] {
 			} else {
-				app.djmaps[cell_click] = (spawn app.grid2d.create_dijkstra_map(gridpos_click,
-					true)).wait()
+				app.grid2d.djmaps[cell_click] = app.grid2d.create_dijkstra_map(gridpos_click,
+					true)
 			}
-			app.djmap_test = app.djmaps[cell_click].clone()
-			for _, mut mover in app.mover_map {
+			app.djmap_test = app.grid2d.djmaps[cell_click].clone()
+			for mover_id, mut mover in app.grid2d.mover_map {
 				if mover.selected {
+					app.grid2d.reg_unreg_target_cell(mover_id, cell_click)
+
 					mover.visited_cells.clear()
 					mover.target_pos = mygrid2d.PixelPos{x, y}
 					mover.target_gridpos = app.grid2d.pixelpos_to_gridpos(mover.target_pos)
@@ -104,7 +105,7 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 fn on_mouse_up(x f32, y f32, button gg.MouseButton, mut app App) {
 	match button {
 		.left {
-			for _, mut mover in app.mover_map {
+			for _, mut mover in app.grid2d.mover_map {
 				in_rectselect_x := mover.current_pos.x >= app.rectselectarea.drawpos.x
 					&& mover.current_pos.x <= app.rectselectarea.drawpos.x + app.rectselectarea.size.x
 				in_rectselect_y := mover.current_pos.y >= app.rectselectarea.drawpos.y
@@ -155,10 +156,10 @@ pub fn (mut app App) create_movers() {
 		}
 	}
 
-	for _ in 0 .. 1000 {
+	for _ in 0 .. 500 {
 		n := rand.int_in_range(0, walkable_cells.len) or { panic(err) }
 		new_mover_id := app.mover_world.new_entity()
-		app.mover_map[new_mover_id] = app.grid2d.create_mover(walkable_cells[n].gridpos)
+		app.grid2d.mover_map[new_mover_id] = app.grid2d.create_mover(walkable_cells[n].gridpos)
 		walkable_cells.delete(n)
 	}
 }
@@ -208,7 +209,7 @@ fn frame(mut app App) {
 		}
 	}
 
-	for target_id in app.djmaps.keys() {
+	for target_id in app.grid2d.djmaps.keys() {
 		app.grid2d.steps_to_stop[target_id] = app.grid2d.find_steps_to_stop(target_id,
 			app.grid2d.cross)
 	}
@@ -229,15 +230,17 @@ fn frame(mut app App) {
 		// draw_debug_each_cell(app, px, py, cell)
 	}
 
-	draw_movers(app.mover_map, ctx, app.imgs)
+	draw_movers(app.grid2d.mover_map, ctx, app.imgs)
 
 	draw_rect_select_area(app)
 
+	ctx.draw_text(32, 32, '${app.grid2d.djmaps.len}', gx.TextCfg{ color: gx.white, size: 24 })
+
 	ctx.end()
 
-	for _, mut mover in app.mover_map {
+	for _, mut mover in app.grid2d.mover_map {
 		// mover.debug = '${mover.visited_cells}'
-		mover.step_moving(app.djmaps, mut app.grid2d)
+		mover.step_moving(app.grid2d.djmaps, mut app.grid2d)
 	}
 }
 
