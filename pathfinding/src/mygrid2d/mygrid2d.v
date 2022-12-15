@@ -30,7 +30,10 @@ pub mut:
 	cell_size     f32
 	cross         bool = true
 	cells         map[int]Cell
+	mover_map     map[int]Mover
+	djmaps        map[int]map[int]int
 	steps_to_stop map[int]int
+	targets_regs  map[int]map[int]bool
 }
 
 pub fn (grid2d Grid2d) gridpos_to_id(gridpos GridPos) int {
@@ -368,6 +371,21 @@ pub fn (grid2d Grid2d) create_mover(gridpos GridPos) Mover {
 		id_pos: id_pos
 		old_id_pos: id_pos
 	}
+}
+
+pub fn (mut grid2d Grid2d) reg_unreg_target_cell(mover_id int, cell_click int) {
+	for target_cell in grid2d.targets_regs.keys() {
+		if _ := grid2d.targets_regs[target_cell][mover_id] {
+			grid2d.targets_regs[target_cell].delete(mover_id)
+			if grid2d.targets_regs[target_cell].len == 0 {
+				if _ := grid2d.djmaps[target_cell] {
+					grid2d.djmaps.delete(target_cell)
+				}
+				grid2d.targets_regs.delete(target_cell)
+			}
+		}
+	}
+	grid2d.targets_regs[cell_click][mover_id] = true
 }
 
 fn (mut mover Mover) on_leave_cell(mut grid2d Grid2d) {
