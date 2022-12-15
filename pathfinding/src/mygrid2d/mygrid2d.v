@@ -325,8 +325,6 @@ pub fn (grid2d Grid2d) create_dijkstra_map(pos_to GridPos, cross bool) map[int]i
 	return costs
 }
 
-/////////////////////////////////////////////////////////////////////////////
-
 pub struct Mover {
 pub mut:
 	id             int
@@ -339,7 +337,7 @@ pub mut:
 	target_pos     PixelPos
 	target_gridpos GridPos
 	percent_moved  f32 = 1.0
-	percent_speed  f32 = 0.05
+	percent_speed  f32 = 0.1
 	cost_to_stop   int
 	visited_cells  []int
 	selected       bool
@@ -440,32 +438,16 @@ pub fn (mut mover Mover) find_next_pos(costdata map[int]int, cost_neighbors []Ce
 		}
 	}
 
-	if cost_neighbors.len > 0 {
-		neighbor_min_cost := cost_neighbors[0]
-		new_next_gridpos := grid2d.id_to_gridpos(neighbor_min_cost.cell_id)
-		mover.next_pos = grid2d.gridpos_to_pixelpos(new_next_gridpos, true)
-		grid2d.cells[neighbor_min_cost.cell_id].register = mover.id
-		grid2d.cells[neighbor_min_cost.cell_id].registered = true
-	} else {
+	if cost_neighbors.len == 0 {
 		mover.visited_cells.clear()
+		return
 	}
 
-	nxtgridpos := grid2d.pixelpos_to_gridpos(mover.next_pos)
-	curgridpos := grid2d.pixelpos_to_gridpos(mover.current_pos)
-	dx := nxtgridpos.col - curgridpos.col
-	dy := nxtgridpos.row - curgridpos.row
-	rotdata := '${dx} ${dy}'
-	rotdata_dict := {
-		'1 0':   0
-		'1 -1':  45
-		'0 -1':  90
-		'-1 -1': 135
-		'-1 0':  180
-		'-1 1':  225
-		'0 1':   270
-		'1 1':   315
-	}
-	mover.rot = rotdata_dict[rotdata]
+	neighbor_min_cost := cost_neighbors[0]
+	new_next_gridpos := grid2d.id_to_gridpos(neighbor_min_cost.cell_id)
+	mover.next_pos = grid2d.gridpos_to_pixelpos(new_next_gridpos, true)
+	grid2d.cells[neighbor_min_cost.cell_id].register = mover.id
+	grid2d.cells[neighbor_min_cost.cell_id].registered = true
 }
 
 pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid2d) bool {
@@ -495,26 +477,24 @@ pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid
 			}
 		}
 
-		if mover.id_pos !in mover.visited_cells {
-			mover.visited_cells << mover.id_pos
-			if mover.visited_cells.len > 32 {
-				mover.visited_cells.delete(0)
-			}
-		}
-
 		if costdata := djmaps[mover.costdata_id] {
-			cost_neighbors := mover.find_neighbors(costdata, grid2d, grid2d.cross)
+			cost_neighbors := (spawn mover.find_neighbors(costdata, grid2d, grid2d.cross)).wait()
 			mover.find_next_pos(costdata, cost_neighbors, mut grid2d)
 		}
+
 		return false
 	}
 
-	mut adjust_speed := f32(1.0)
+	if mover.id_pos !in mover.visited_cells {
+		mover.visited_cells << mover.id_pos
+		if mover.visited_cells.len > 32 {
+			mover.visited_cells.delete(0)
+		}
+	}
+
 	is_same_col := mover.start_pos.x - mover.next_pos.x == 0
 	is_same_row := mover.start_pos.y - mover.next_pos.y == 0
-	if !is_same_col && !is_same_row {
-		adjust_speed = 0.7
-	}
+	adjust_speed := if !is_same_col && !is_same_row { f32(0.7) } else { f32(1.0) }
 
 	mover.current_pos.x = mover.start_pos.x +
 		mover.percent_moved * (mover.next_pos.x - mover.start_pos.x)
@@ -526,4 +506,24 @@ pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid
 		mover.percent_moved = 1
 	}
 	return true
+}
+
+pub fn (mover Mover) calc_mover_rot(grid2d Grid2d) int {
+	nxtgridpos := grid2d.pixelpos_to_gridpos(mover.next_pos)
+	curgridpos := grid2d.pixelpos_to_gridpos(mover.current_pos)
+	dx := nxtgridpos.col - curgridpos.col
+	dy := nxtgridpos.row - curgridpos.row
+	rotdata := '${dx} ${dy}'
+	rotdata_dict := {
+		'1 0':   0
+		'1 -1':  45
+		'0 -1':  90
+		'-1 -1': 135
+		'-1 0':  180
+		'-1 1':  225
+		'0 1':   270
+		'1 1':   315
+		'0 0':   mover.rot
+	}
+	return rotdata_dict[rotdata]
 }
