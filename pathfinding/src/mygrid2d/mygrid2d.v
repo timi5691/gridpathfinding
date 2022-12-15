@@ -339,7 +339,7 @@ pub mut:
 	target_pos     PixelPos
 	target_gridpos GridPos
 	percent_moved  f32 = 1.0
-	percent_speed  f32 = 0.1
+	percent_speed  f32 = 0.05
 	cost_to_stop   int
 	visited_cells  []int
 	selected       bool
