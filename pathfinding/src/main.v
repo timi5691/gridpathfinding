@@ -81,14 +81,14 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 			}
 		}
 		.right {
-			if _ := app.grid2d.djmaps[cell_click] {
-			} else {
-				app.grid2d.djmaps[cell_click] = app.grid2d.create_dijkstra_map(gridpos_click,
-					true)
-			}
 			app.djmap_test = app.grid2d.djmaps[cell_click].clone()
 			for mover_id, mut mover in app.grid2d.mover_map {
 				if mover.selected {
+					if _ := app.grid2d.djmaps[cell_click] {
+					} else {
+						app.grid2d.djmaps[cell_click] = app.grid2d.create_dijkstra_map(gridpos_click,
+							true)
+					}
 					app.grid2d.reg_unreg_target_cell(mover_id, cell_click)
 
 					mover.visited_cells.clear()
@@ -240,6 +240,8 @@ fn frame(mut app App) {
 
 	for _, mut mover in app.grid2d.mover_map {
 		// mover.debug = '${mover.visited_cells}'
+		rot := mover.calc_mover_rot(app.grid2d)
+		mover.rot = if rot != -1 { rot } else { mover.rot }
 		mover.step_moving(app.grid2d.djmaps, mut app.grid2d)
 	}
 }
