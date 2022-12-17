@@ -75,7 +75,7 @@ pub fn (grid2d Grid2d) pixelpos_to_id(pp PixelPos) int {
 pub fn (grid2d Grid2d) cell_get_neighbor_up(cellpos GridPos) GridPos {
 	nb_row := cellpos.row - 1
 	if nb_row < 0 {
-		return GridPos{cellpos.row, cellpos.col}
+		return cellpos
 	}
 	return GridPos{nb_row, cellpos.col}
 }
@@ -83,7 +83,7 @@ pub fn (grid2d Grid2d) cell_get_neighbor_up(cellpos GridPos) GridPos {
 pub fn (grid2d Grid2d) cell_get_neighbor_down(cellpos GridPos) GridPos {
 	nb_row := cellpos.row + 1
 	if nb_row >= grid2d.rows {
-		return GridPos{cellpos.row, cellpos.col}
+		return cellpos
 	}
 	return GridPos{nb_row, cellpos.col}
 }
@@ -91,7 +91,7 @@ pub fn (grid2d Grid2d) cell_get_neighbor_down(cellpos GridPos) GridPos {
 pub fn (grid2d Grid2d) cell_get_neighbor_left(cellpos GridPos) GridPos {
 	nb_col := cellpos.col - 1
 	if nb_col < 0 {
-		return GridPos{cellpos.row, cellpos.col}
+		return cellpos
 	}
 	return GridPos{cellpos.row, nb_col}
 }
@@ -99,7 +99,7 @@ pub fn (grid2d Grid2d) cell_get_neighbor_left(cellpos GridPos) GridPos {
 pub fn (grid2d Grid2d) cell_get_neighbor_right(cellpos GridPos) GridPos {
 	nb_col := cellpos.col + 1
 	if nb_col >= grid2d.cols {
-		return GridPos{cellpos.row, cellpos.col}
+		return cellpos
 	}
 	return GridPos{cellpos.row, nb_col}
 }
@@ -108,7 +108,7 @@ pub fn (grid2d Grid2d) cell_get_neighbor_up_left(cellpos GridPos) GridPos {
 	nb_row := cellpos.row - 1
 	nb_col := cellpos.col - 1
 	if nb_col < 0 || nb_row < 0 {
-		return GridPos{cellpos.row, cellpos.col}
+		return cellpos
 	}
 	return GridPos{nb_row, nb_col}
 }
@@ -117,7 +117,7 @@ pub fn (grid2d Grid2d) cell_get_neighbor_up_right(cellpos GridPos) GridPos {
 	nb_row := cellpos.row - 1
 	nb_col := cellpos.col + 1
 	if nb_col >= grid2d.cols || nb_row < 0 {
-		return GridPos{cellpos.row, cellpos.col}
+		return cellpos
 	}
 	return GridPos{nb_row, nb_col}
 }
@@ -126,7 +126,7 @@ pub fn (grid2d Grid2d) cell_get_neighbor_down_right(cellpos GridPos) GridPos {
 	nb_row := cellpos.row + 1
 	nb_col := cellpos.col + 1
 	if nb_col >= grid2d.cols || nb_row >= grid2d.rows {
-		return GridPos{cellpos.row, cellpos.col}
+		return cellpos
 	}
 	return GridPos{nb_row, nb_col}
 }
@@ -135,7 +135,7 @@ pub fn (grid2d Grid2d) cell_get_neighbor_down_left(cellpos GridPos) GridPos {
 	nb_row := cellpos.row + 1
 	nb_col := cellpos.col - 1
 	if nb_col < 0 || nb_row >= grid2d.rows {
-		return GridPos{cellpos.row, cellpos.col}
+		return cellpos
 	}
 	return GridPos{nb_row, nb_col}
 }
@@ -325,6 +325,27 @@ pub fn (grid2d Grid2d) create_dijkstra_map(pos_to GridPos, cross bool) map[int]i
 	return costs
 }
 
+pub fn (mut grid2d Grid2d) create_dijkstra_map_for_mover(mover_id int, x f32, y f32) {
+	pixelpos_click := PixelPos{x, y}
+	gridpos_click := grid2d.pixelpos_to_gridpos(pixelpos_click)
+	cell := grid2d.gridpos_to_id(gridpos_click)
+	if _ := grid2d.djmaps[cell] {
+	} else {
+		grid2d.djmaps[cell] = grid2d.create_dijkstra_map(gridpos_click, true)
+	}
+	grid2d.reg_unreg_target_cell(mover_id, cell)
+}
+
+pub fn (grid2d Grid2d) set_mover_target(mut mover Mover, x f32, y f32) {
+	pixelpos_click := PixelPos{x, y}
+	gridpos_click := grid2d.pixelpos_to_gridpos(pixelpos_click)
+	cell_click := grid2d.gridpos_to_id(gridpos_click)
+	mover.visited_cells.clear()
+	mover.target_pos = pixelpos_click
+	mover.target_gridpos = gridpos_click
+	mover.costdata_id = cell_click
+}
+
 pub struct Mover {
 pub mut:
 	id             int
@@ -337,13 +358,14 @@ pub mut:
 	target_pos     PixelPos
 	target_gridpos GridPos
 	percent_moved  f32 = 1.0
-	percent_speed  f32 = 0.1
+	percent_speed  f32 = 0.05
 	cost_to_stop   int
 	visited_cells  []int
 	selected       bool
 	costdata_id    int = -1
 	rot            int
 	debug          string
+	team           int
 }
 
 pub struct CellCost {
