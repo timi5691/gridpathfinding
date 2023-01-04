@@ -79,7 +79,7 @@ pub fn (grid2d Grid2d) pixelpos_to_id(pp PixelPos) int {
 	return grid2d.gridpos_to_id(grid2d.pixelpos_to_gridpos(pp))
 }
 
-pub fn (grid2d Grid2d) cell_get_neighbor_up(cellpos GridPos) GridPos {
+pub fn cell_get_neighbor_up(cellpos GridPos) GridPos {
 	nb_row := cellpos.row - 1
 	if nb_row < 0 {
 		return cellpos
@@ -87,15 +87,15 @@ pub fn (grid2d Grid2d) cell_get_neighbor_up(cellpos GridPos) GridPos {
 	return GridPos{nb_row, cellpos.col}
 }
 
-pub fn (grid2d Grid2d) cell_get_neighbor_down(cellpos GridPos) GridPos {
+pub fn cell_get_neighbor_down(cellpos GridPos, rows int) GridPos {
 	nb_row := cellpos.row + 1
-	if nb_row >= grid2d.rows {
+	if nb_row >= rows {
 		return cellpos
 	}
 	return GridPos{nb_row, cellpos.col}
 }
 
-pub fn (grid2d Grid2d) cell_get_neighbor_left(cellpos GridPos) GridPos {
+pub fn cell_get_neighbor_left(cellpos GridPos) GridPos {
 	nb_col := cellpos.col - 1
 	if nb_col < 0 {
 		return cellpos
@@ -103,15 +103,15 @@ pub fn (grid2d Grid2d) cell_get_neighbor_left(cellpos GridPos) GridPos {
 	return GridPos{cellpos.row, nb_col}
 }
 
-pub fn (grid2d Grid2d) cell_get_neighbor_right(cellpos GridPos) GridPos {
+pub fn cell_get_neighbor_right(cellpos GridPos, cols int) GridPos {
 	nb_col := cellpos.col + 1
-	if nb_col >= grid2d.cols {
+	if nb_col >= cols {
 		return cellpos
 	}
 	return GridPos{cellpos.row, nb_col}
 }
 
-pub fn (grid2d Grid2d) cell_get_neighbor_up_left(cellpos GridPos) GridPos {
+pub fn cell_get_neighbor_up_left(cellpos GridPos) GridPos {
 	nb_row := cellpos.row - 1
 	nb_col := cellpos.col - 1
 	if nb_col < 0 || nb_row < 0 {
@@ -120,28 +120,28 @@ pub fn (grid2d Grid2d) cell_get_neighbor_up_left(cellpos GridPos) GridPos {
 	return GridPos{nb_row, nb_col}
 }
 
-pub fn (grid2d Grid2d) cell_get_neighbor_up_right(cellpos GridPos) GridPos {
+pub fn cell_get_neighbor_up_right(cellpos GridPos, cols int) GridPos {
 	nb_row := cellpos.row - 1
 	nb_col := cellpos.col + 1
-	if nb_col >= grid2d.cols || nb_row < 0 {
+	if nb_col >= cols || nb_row < 0 {
 		return cellpos
 	}
 	return GridPos{nb_row, nb_col}
 }
 
-pub fn (grid2d Grid2d) cell_get_neighbor_down_right(cellpos GridPos) GridPos {
+pub fn cell_get_neighbor_down_right(cellpos GridPos, cols int, rows int) GridPos {
 	nb_row := cellpos.row + 1
 	nb_col := cellpos.col + 1
-	if nb_col >= grid2d.cols || nb_row >= grid2d.rows {
+	if nb_col >= cols || nb_row >= rows {
 		return cellpos
 	}
 	return GridPos{nb_row, nb_col}
 }
 
-pub fn (grid2d Grid2d) cell_get_neighbor_down_left(cellpos GridPos) GridPos {
+pub fn cell_get_neighbor_down_left(cellpos GridPos, rows int) GridPos {
 	nb_row := cellpos.row + 1
 	nb_col := cellpos.col - 1
-	if nb_col < 0 || nb_row >= grid2d.rows {
+	if nb_col < 0 || nb_row >= rows {
 		return cellpos
 	}
 	return GridPos{nb_row, nb_col}
@@ -149,13 +149,13 @@ pub fn (grid2d Grid2d) cell_get_neighbor_down_left(cellpos GridPos) GridPos {
 
 pub fn (grid2d Grid2d) cell_get_neighbors(cellpos GridPos, cross bool) []GridPos {
 	mut rs := []GridPos{}
-	left := grid2d.cell_get_neighbor_left(cellpos)
+	left := cell_get_neighbor_left(cellpos)
 	leftid := grid2d.gridpos_to_id(left)
-	right := grid2d.cell_get_neighbor_right(cellpos)
+	right := cell_get_neighbor_right(cellpos, grid2d.cols)
 	rightid := grid2d.gridpos_to_id(right)
-	up := grid2d.cell_get_neighbor_up(cellpos)
+	up := cell_get_neighbor_up(cellpos)
 	upid := grid2d.gridpos_to_id(up)
-	down := grid2d.cell_get_neighbor_down(cellpos)
+	down := cell_get_neighbor_down(cellpos, grid2d.rows)
 	downid := grid2d.gridpos_to_id(down)
 	if left !in rs && left != cellpos && grid2d.cells[leftid].walkable {
 		rs << left
@@ -172,13 +172,13 @@ pub fn (grid2d Grid2d) cell_get_neighbors(cellpos GridPos, cross bool) []GridPos
 	if !cross {
 		return rs
 	}
-	up_left := grid2d.cell_get_neighbor_up_left(cellpos)
+	up_left := cell_get_neighbor_up_left(cellpos)
 	upleftid := grid2d.gridpos_to_id(up_left)
-	up_right := grid2d.cell_get_neighbor_up_right(cellpos)
+	up_right := cell_get_neighbor_up_right(cellpos, grid2d.cols)
 	uprightid := grid2d.gridpos_to_id(up_right)
-	down_left := grid2d.cell_get_neighbor_down_left(cellpos)
+	down_left := cell_get_neighbor_down_left(cellpos, grid2d.rows)
 	downleftid := grid2d.gridpos_to_id(down_left)
-	down_right := grid2d.cell_get_neighbor_down_right(cellpos)
+	down_right := cell_get_neighbor_down_right(cellpos, grid2d.cols, grid2d.rows)
 	downrightid := grid2d.gridpos_to_id(down_right)
 	if up_left !in rs && up_left != cellpos && grid2d.cells[upleftid].walkable && up in rs
 		&& left in rs {
@@ -219,46 +219,46 @@ pub fn calc_steps(gridpos1 GridPos, gridpos2 GridPos) int {
 	return myabs(gridpos2.row - gridpos1.row) + myabs(gridpos2.col - gridpos1.col)
 }
 
-pub fn (grid2d Grid2d) get_cells_around(cell_to int, cross bool) []int {
-	if grid2d.cells[cell_to].walkable && !grid2d.cells[cell_to].has_mover {
-		return [cell_to]
-	}
-
-	mut costs := {
-		cell_to: 0
-	}
-
-	mut opentable := [cell_to]
-
-	mut step := 1
-
-	for opentable.len != 0 {
-		mut new_opentable := []int{}
-		for cell in opentable {
-			cell_pos := grid2d.id_to_gridpos(cell)
-			neighbors := grid2d.cell_get_neighbors(cell_pos, cross)
-			mut is_stop := false
-			for n in neighbors {
-				id_n := grid2d.gridpos_to_id(n)
-				if _ := costs[id_n] {
-				} else {
-					costs[id_n] = step
-					new_opentable << id_n
-				}
-				if grid2d.cells[id_n].walkable && !grid2d.cells[id_n].has_mover {
-					is_stop = true
-				}
-			}
-			if is_stop {
-				return new_opentable
-			}
-		}
-		opentable = new_opentable.clone()
-		step += 1
-	}
-
-	return []int{}
-}
+// pub fn (grid2d Grid2d) get_cells_around(cell_to int, cross bool) []int {
+// 	if grid2d.cells[cell_to].walkable && !grid2d.cells[cell_to].has_mover {
+// 		return [cell_to]
+// 	}
+//
+// 	mut costs := {
+// 		cell_to: 0
+// 	}
+//
+// 	mut opentable := [cell_to]
+//
+// 	mut step := 1
+//
+// 	for opentable.len != 0 {
+// 		mut new_opentable := []int{}
+// 		for cell in opentable {
+// 			cell_pos := grid2d.id_to_gridpos(cell)
+// 			neighbors := grid2d.cell_get_neighbors(cell_pos, cross)
+// 			mut is_stop := false
+// 			for n in neighbors {
+// 				id_n := grid2d.gridpos_to_id(n)
+// 				if _ := costs[id_n] {
+// 				} else {
+// 					costs[id_n] = step
+// 					new_opentable << id_n
+// 				}
+// 				if grid2d.cells[id_n].walkable && !grid2d.cells[id_n].has_mover {
+// 					is_stop = true
+// 				}
+// 			}
+// 			if is_stop {
+// 				return new_opentable
+// 			}
+// 		}
+// 		opentable = new_opentable.clone()
+// 		step += 1
+// 	}
+//
+// 	return []int{}
+// }
 
 pub fn (grid2d Grid2d) find_steps_to_stop(cell_to int, cross bool) int {
 	if grid2d.cells[cell_to].walkable && !grid2d.cells[cell_to].has_mover {
