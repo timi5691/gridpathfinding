@@ -101,7 +101,7 @@ fn (app App) create_image(img_pth string) gg.Image {
 
 fn click_select_mover_team(mut mover mygrid2d.Mover, pixelpos_click mygrid2d.PixelPos, team int, app App) bool {
 	mut rs := false
-	if mover.team == 1 {
+	if mover.team == team {
 		if mygrid2d.myabs(int(pixelpos_click.x) - int(mover.current_pos.x)) <= int(app.grid2d.cell_size / 2)
 			&& mygrid2d.myabs(int(pixelpos_click.y) - int(mover.current_pos.y)) <= int(app.grid2d.cell_size / 2) {
 			mover.selected = true
@@ -177,28 +177,28 @@ fn on_mouse_up(x f32, y f32, button gg.MouseButton, mut app App) {
 	}
 }
 
-fn on_key_down(key gg.KeyCode, m gg.Modifier, mut app App) {
-}
+// fn on_key_down(key gg.KeyCode, m gg.Modifier, mut app App) {
+// }
 
-fn on_key_up(key gg.KeyCode, m gg.Modifier, mut app App) {
-}
+// fn on_key_up(key gg.KeyCode, m gg.Modifier, mut app App) {
+// }
 
-fn draw_debug_each_cell(app App, px int, py int, cell mygrid2d.Cell) {
-	ctx := app.gg
-	debug := cell.has_mover
-	if debug {
-		ctx.draw_text(px, py, '1', gx.TextCfg{ color: gx.red })
-	} else {
-		ctx.draw_text(px, py, '0', gx.TextCfg{ color: gx.red })
-	}
-}
+// fn draw_debug_each_cell(app App, px int, py int, cell mygrid2d.Cell) {
+// 	mut ctx := app.gg
+// 	debug := cell.has_mover
+// 	if debug {
+// 		ctx.draw_text(px, py, '1', gx.TextCfg{ color: gx.red })
+// 	} else {
+// 		ctx.draw_text(px, py, '0', gx.TextCfg{ color: gx.red })
+// 	}
+// }
 
-fn draw_djmap_test_each_cell(app App, px int, py int, cell mygrid2d.Cell) {
-	ctx := app.gg
-	if app.djmap_test.len != 0 {
-		ctx.draw_text(px, py, '${app.djmap_test[cell.id]}', gx.TextCfg{ color: gx.white, size: 12 })
-	}
-}
+// fn draw_djmap_test_each_cell(app App, px int, py int, cell mygrid2d.Cell) {
+// 	mut ctx := app.gg
+// 	if app.djmap_test.len != 0 {
+// 		ctx.draw_text(px, py, '${app.djmap_test[cell.id]}', gx.TextCfg{ color: gx.white, size: 12 })
+// 	}
+// }
 
 fn draw_grid_map(app App) {
 	ctx := app.gg
@@ -219,7 +219,7 @@ fn draw_grid_map(app App) {
 	}
 }
 
-fn draw_movers(mover_map map[int]mygrid2d.Mover, ctx gg.Context, imgs []gg.Image) {
+fn draw_movers(mover_map map[int]mygrid2d.Mover, mut ctx gg.Context, imgs []gg.Image) {
 	for _, mover in mover_map {
 		x := mover.current_pos.x
 		y := mover.current_pos.y
@@ -387,8 +387,8 @@ fn main() {
 		frame_fn: frame
 		click_fn: on_mouse_down
 		unclick_fn: on_mouse_up
-		keydown_fn: on_key_down
-		keyup_fn: on_key_up
+		// keydown_fn: on_key_down
+		// keyup_fn: on_key_up
 		user_data: app
 	)
 	app.gg.run()
@@ -402,12 +402,12 @@ fn init(mut app App) {
 	cross := true
 	app.grid2d.init_info(cols, rows, cell_size, cross)
 	app.grid2d_random_walkable()
-	app.create_movers(1000)
+	app.create_movers(500)
 	app.debug = '${app.grid2d.mover_map.len}'
 }
 
 fn frame(mut app App) {
-	ctx := app.gg
+	mut ctx := app.gg
 
 	app.rectselectarea = rectselectarea_update_draw_pos_and_size(app.rectselectarea, ctx)
 
@@ -425,7 +425,7 @@ fn frame(mut app App) {
 
 	ctx.begin()
 	draw_grid_map(app)
-	draw_movers(app.grid2d.mover_map, ctx, app.imgs)
+	draw_movers(app.grid2d.mover_map, mut ctx, app.imgs)
 	draw_rect_select_area(app)
 	ctx.draw_text(32, 32, 'agents: ${app.debug} cols: ${app.grid2d.cols} rows: ${app.grid2d.rows}',
 		gx.TextCfg{ color: gx.white, size: 24 })
