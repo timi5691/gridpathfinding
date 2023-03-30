@@ -59,19 +59,6 @@ fn draw_rect_select_area(app App) {
 	}
 }
 
-struct DjmapChan {
-	id    int
-	djmap map[int]int
-}
-
-fn create_djmap(grid2d mygrid2d.Grid2d, gridpos_click mygrid2d.GridPos, cross bool, the_chanel chan DjmapChan, id int) {
-	djmap := grid2d.create_dijkstra_map(gridpos_click, cross)
-	the_chanel <- DjmapChan{
-		id: id
-		djmap: djmap
-	}
-}
-
 struct App {
 mut:
 	gg     &gg.Context
@@ -81,7 +68,7 @@ mut:
 	has_move_selected bool
 
 	ch_sts   chan map[int]int // channel steps to stop
-	ch_djmap chan DjmapChan   // channel dikstra map
+	ch_djmap chan mygrid2d.DjmapChan   // channel dikstra map
 
 	djmap_test map[int]int
 
@@ -89,9 +76,10 @@ mut:
 
 	rectselectarea RectSelectArea
 	debug          string
+	debug2         string
 }
 
-fn (app App) create_image(img_pth string) gg.Image {
+fn (mut app App) create_image(img_pth string) !gg.Image {
 	$if android {
 		img := os.read_apk_asset(img_pth) or { panic(err) }
 		return app.gg.create_image_from_byte_array(img)
@@ -134,6 +122,24 @@ fn select_movers_in_rect_select_area(mut app App) {
 	app.has_move_selected = has_move_selected
 }
 
+fn on_event(e &gg.Event, mut app App) {
+	if e.typ == .touches_began {
+		if e.num_touches > 0 {
+			t := e.touches[0]
+			tx := t.pos_x
+			ty := t.pos_y
+			app.debug2 = 'touch began: x: ${tx} y: ${ty}'
+		}
+	} else if e.typ == .touches_ended {
+		if e.touches.len > 0 {
+			t := e.touches[0]
+			tx := t.pos_x
+			ty := t.pos_y
+			app.debug2 = 'touch ended: x: ${tx} y: ${ty}'
+		}
+	}
+}
+
 fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 	pixelpos_click := mygrid2d.PixelPos{x, y}
 	gridpos_click := app.grid2d.pixelpos_to_gridpos(pixelpos_click)
@@ -157,8 +163,7 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 			if _ := app.grid2d.djmaps[cell_click] {
 			} else {
 				if app.has_move_selected {
-					spawn create_djmap(app.grid2d, gridpos_click, app.grid2d.cross, app.ch_djmap,
-						cell_click)
+					app.grid2d.create_dijkstra_map_in_thread(cell_click, app.ch_djmap)
 				}
 			}
 		}
@@ -280,15 +285,15 @@ fn draw_movers(mover_map map[int]mygrid2d.Mover, mut ctx gg.Context, imgs []gg.I
 	}
 }
 
-pub fn (mut app App) grid2d_random_walkable() {
+pub fn (mut app App) grid2d_random_walkable(percent_walkable int) {
 	for row in 0 .. app.grid2d.rows {
 		for col in 0 .. app.grid2d.cols {
 			gridpos := mygrid2d.GridPos{row, col}
 			id := app.grid2d.gridpos_to_id(gridpos)
-			mut walkable := true
+			mut walkable := false
 			walkable_number := rand.int_in_range(0, 100) or { panic(err) }
-			if walkable_number > 95 {
-				walkable = false
+			if walkable_number <= percent_walkable {
+				walkable = true
 			}
 			cell := mygrid2d.Cell{
 				id: id
@@ -306,63 +311,25 @@ fn init_images(mut app App) {
 		'img/wall.png',
 	]
 	for i in 0 .. img_dir_list.len {
-		img := app.create_image(img_dir_list[i])
+		img := app.create_image(img_dir_list[i]) or {panic(err)}
 		app.imgs << img
 	}
 }
 
-fn find_walkable_cells(app App) []mygrid2d.Cell {
-	mut walkable_cells := []mygrid2d.Cell{}
-	for _, cell in app.grid2d.cells {
-		if cell.walkable {
-			walkable_cells << cell
-		}
-	}
-	return walkable_cells
-}
-
 fn (mut app App) create_movers(mover_numbers int) {
 	// mut walkable_cells := app.grid2d.cells.values().filter(it.walkable == true)
-	mut walkable_cells := find_walkable_cells(app)
+	mut walkable_cells := app.grid2d.get_walkable_cells()
 	for _ in 0 .. mover_numbers {
 		n := rand.int_in_range(0, walkable_cells.len) or { panic(err) }
 		new_mover_id := app.mover_world.create_new_id()
 		app.grid2d.mover_map[new_mover_id] = app.grid2d.create_mover(walkable_cells[n].gridpos)
-		if new_mover_id < 2000 {
+		if new_mover_id < 10000 {
 			app.grid2d.mover_map[new_mover_id].team = 1
 			app.grid2d.mover_map[new_mover_id].percent_speed = 0.1
 		} else {
 			app.grid2d.mover_map[new_mover_id].team = 0
 		}
 		walkable_cells.delete(n)
-	}
-}
-
-fn communicate_channels(mut app App) {
-	// channel find steps to stop
-	spawn fn (the_channel chan map[int]int, grid2d mygrid2d.Grid2d) {
-		the_channel <- mygrid2d.find_steps_to_stop_to_each_target(grid2d)
-	}(app.ch_sts, app.grid2d)
-	mut a := map[int]int{}
-	if app.ch_sts.try_pop(mut a) == .success {
-		app.grid2d.steps_to_stop = a.clone()
-	}
-
-	// channel create dikstra map
-	mut b := DjmapChan{}
-	if app.ch_djmap.try_pop(mut b) == .success {
-		app.grid2d.djmaps[b.id] = b.djmap.clone()
-		for mover_id, mut mover in app.grid2d.mover_map {
-			if mover.selected && mover.team == 1 {
-				gridpos_ := app.grid2d.id_to_gridpos(b.id)
-				pxpos_ := app.grid2d.gridpos_to_pixelpos(gridpos_, true)
-				app.grid2d.set_mover_target(mut mover, pxpos_.x, pxpos_.y)
-				mygrid2d.reg_unreg_target_cell(mover_id, b.id, mut app.grid2d)
-			}
-		}
-		if _ := app.grid2d.djmaps[b.id] {
-			app.djmap_test = app.grid2d.djmaps[b.id].clone()
-		}
 	}
 }
 
@@ -382,11 +349,13 @@ fn main() {
 		bg_color: gx.black
 		width: 640
 		height: 640
+		// fullscreen: true
 		window_title: 'grid path finding'
 		init_fn: init
 		frame_fn: frame
 		click_fn: on_mouse_down
 		unclick_fn: on_mouse_up
+		event_fn: on_event
 		// keydown_fn: on_key_down
 		// keyup_fn: on_key_up
 		user_data: app
@@ -396,13 +365,17 @@ fn main() {
 
 fn init(mut app App) {
 	init_images(mut app)
-	cols := 128
-	rows := 128
-	cell_size := 5
-	cross := true
-	app.grid2d.init_info(cols, rows, cell_size, cross)
-	app.grid2d_random_walkable()
-	app.create_movers(500)
+	
+	app.grid2d.cols = 128
+	app.grid2d.rows = 128
+	app.grid2d.cell_size = 5
+	app.grid2d.cross = true
+
+	percent_walkable := 98
+	app.grid2d_random_walkable(percent_walkable)
+
+	app.create_movers(2000)
+	
 	app.debug = '${app.grid2d.mover_map.len}'
 }
 
@@ -411,24 +384,26 @@ fn frame(mut app App) {
 
 	app.rectselectarea = rectselectarea_update_draw_pos_and_size(app.rectselectarea, ctx)
 
-	communicate_channels(mut app)
-
-	for _, mut mover in app.grid2d.mover_map {
-		rot := mover.calc_mover_rot(app.grid2d)
-		mover.rot = if rot != -1 { rot } else { mover.rot }
-	}
+	app.grid2d.find_steps_to_stop_to_each_target_in_thread(app.ch_sts)
+	app.grid2d.on_create_dijkstra_map_in_thread_finished(app.ch_djmap, mut app.djmap_test)
 
 	for _, mut mover in app.grid2d.mover_map {
 		// mover.debug = '${mover.visited_cells}'
+		rot := mover.calc_mover_rot(app.grid2d)
+		mover.rot = if rot != -1 { rot } else { mover.rot }
 		mover.step_moving(app.grid2d.djmaps, mut app.grid2d)
 	}
 
 	ctx.begin()
+	
 	draw_grid_map(app)
 	draw_movers(app.grid2d.mover_map, mut ctx, app.imgs)
 	draw_rect_select_area(app)
+	
 	ctx.draw_text(32, 32, 'agents: ${app.debug} cols: ${app.grid2d.cols} rows: ${app.grid2d.rows}',
 		gx.TextCfg{ color: gx.white, size: 24 })
 	ctx.draw_text(32, 64, 'targets: ${app.grid2d.djmaps.len}', gx.TextCfg{ color: gx.white, size: 24 })
+	ctx.draw_text(32, 96, 'debug2: ${app.debug2} ${app.gg.window_size()}', gx.TextCfg{ color: gx.white, size: 24 })
+	
 	ctx.end()
 }
