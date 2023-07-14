@@ -1,430 +1,794 @@
-module main
+module mygrid2d
 
-import gg
-import gx
-import os
-import rand
-import rand.seed
-import mygrid2d
-import idman
-// import time
-
-const (
-	w    = 600
-	h    = 600
-	cols      = 150
-	rows      = 150
-	cell_size = w/cols
-	mover_radius = 12
-)
-
-struct RectSelectArea {
-mut:
-	pos     mygrid2d.PixelPos
-	drawpos mygrid2d.PixelPos
-	size    mygrid2d.PixelPos
-	color   gx.Color = gx.white
-	active  bool
+pub struct GridPos {
+pub mut:
+	row int
+	col int
 }
 
-fn rect_select_start(pixelpos_click mygrid2d.PixelPos, mut app App) {
-	app.rectselectarea.pos = pixelpos_click
-	app.rectselectarea.drawpos = pixelpos_click
-	app.rectselectarea.active = true
+pub struct PixelPos {
+pub mut:
+	x f32
+	y f32
 }
 
-fn rect_select_finished(mut app App) {
-	app.rectselectarea.active = false
-	app.rectselectarea.size = mygrid2d.PixelPos{0, 0}
+pub struct Cell {
+pub mut:
+	id             int
+	gridpos        GridPos
+	walkable       bool
+	has_mover      bool
+	registered     bool
+	register       int
+	signal_giveway bool
 }
 
-fn rectselectarea_update_draw_pos_and_size(rectselectarea0 RectSelectArea, ctx gg.Context) RectSelectArea {
-	mut rectselectarea := rectselectarea0
-	if rectselectarea.active {
-		if ctx.mouse_pos_x >= rectselectarea.pos.x {
-			rectselectarea.drawpos.x = rectselectarea.pos.x
-			rectselectarea.size.x = ctx.mouse_pos_x - rectselectarea.pos.x
-		} else {
-			rectselectarea.drawpos.x = ctx.mouse_pos_x
-			rectselectarea.size.x = rectselectarea.pos.x - ctx.mouse_pos_x
+pub struct Grid2d {
+pub mut:
+	rows                    int
+	cols                    int
+	cell_size               f32
+	cross                   bool = true
+	cells                   map[int]Cell
+	mover_map               map[int]Mover
+	djmaps                  map[int]map[int]int
+	steps_to_stop           map[int]int
+	targets_regs            map[int]map[int]bool
+	djmap_just_created_list []int
+}
+
+pub struct DjmapChan {
+pub mut:
+	id    int
+	djmap map[int]int
+}
+
+pub fn (mut grid2d Grid2d) init_info(cols int, rows int, cell_size f32, cross bool) {
+	grid2d.cols = cols
+	grid2d.rows = rows
+	grid2d.cell_size = cell_size
+	grid2d.cross = cross
+}
+
+pub fn (grid2d Grid2d) gridpos_to_id(gridpos GridPos) int {
+	return gridpos.row * grid2d.cols + gridpos.col
+}
+
+pub fn (grid2d Grid2d) id_to_gridpos(id int) GridPos {
+	r := id / grid2d.cols
+
+	return GridPos{
+		row: r
+		col: id - r * grid2d.cols
+	}
+}
+
+pub fn (grid2d Grid2d) gridpos_to_pixelpos(gridpos GridPos, center bool) PixelPos {
+	if center {
+		return PixelPos{
+			x: gridpos.col * grid2d.cell_size + grid2d.cell_size / 2
+			y: gridpos.row * grid2d.cell_size + grid2d.cell_size / 2
 		}
-
-		if ctx.mouse_pos_y >= rectselectarea.pos.y {
-			rectselectarea.drawpos.y = rectselectarea.pos.y
-			rectselectarea.size.y = ctx.mouse_pos_y - rectselectarea.pos.y
-		} else {
-			rectselectarea.drawpos.y = ctx.mouse_pos_y
-			rectselectarea.size.y = rectselectarea.pos.y - ctx.mouse_pos_y
-		}
 	}
 
-	return rectselectarea
-}
-
-fn draw_rect_select_area(app App) {
-	ctx := app.gg
-	if app.rectselectarea.active {
-		ctx.draw_rect_empty(int(app.rectselectarea.drawpos.x), int(app.rectselectarea.drawpos.y),
-			int(app.rectselectarea.size.x), int(app.rectselectarea.size.y), app.rectselectarea.color)
+	return PixelPos{
+		x: gridpos.col * grid2d.cell_size
+		y: gridpos.row * grid2d.cell_size
 	}
 }
 
-struct App {
-mut:
-	gg     &gg.Context
-	imgs   []gg.Image
-	grid2d mygrid2d.Grid2d
-
-	has_mover_selected bool
-
-	ch_sts   chan map[int]int // channel steps to stop
-	ch_djmap chan mygrid2d.DjmapChan   // channel dikstra map
-
-	djmap_test map[int]int
-
-	mover_world idman.IdManager
-
-	rectselectarea RectSelectArea
-	debug          string
+pub fn (grid2d Grid2d) pixelpos_to_gridpos(pp PixelPos) GridPos {
+	return GridPos{
+		row: int(pp.y / grid2d.cell_size)
+		col: int(pp.x / grid2d.cell_size)
+	}
 }
 
-fn (app App) create_image(img_pth string) !gg.Image {
-	$if android {
-		img := os.read_apk_asset(img_pth) or { panic(err) }
-		return app.gg.create_image_from_byte_array(img)
+pub fn (grid2d Grid2d) pixelpos_to_id(pp PixelPos) int {
+	return grid2d.gridpos_to_id(grid2d.pixelpos_to_gridpos(pp))
+}
+
+pub fn (grid2d Grid2d) cell_get_neighbor_up(cellpos GridPos) GridPos {
+	nb_row := cellpos.row - 1
+
+	if nb_row < 0 {
+		return cellpos
 	}
 
-	return app.gg.create_image(os.resource_abs_path('assets/${img_pth}'))
+	return GridPos{nb_row, cellpos.col}
 }
 
-fn click_select_mover_team(mut mover mygrid2d.Mover, pixelpos_click mygrid2d.PixelPos, team int, app App) bool {
-	mut rs := false
+pub fn (grid2d Grid2d) cell_get_neighbor_down(cellpos GridPos) GridPos {
+	nb_row := cellpos.row + 1
 
-	if mover.team == 1 {
-		if mygrid2d.myabs(int(pixelpos_click.x) - int(mover.current_pos.x)) <= int(app.grid2d.cell_size / 2)
-			&& mygrid2d.myabs(int(pixelpos_click.y) - int(mover.current_pos.y)) <= int(app.grid2d.cell_size / 2) {
-			mover.selected = true
+	if nb_row >= grid2d.rows {
+		return cellpos
+	}
 
-			if !rs {
-				rs = true
+	return GridPos{nb_row, cellpos.col}
+}
+
+pub fn (grid2d Grid2d) cell_get_neighbor_left(cellpos GridPos) GridPos {
+	nb_col := cellpos.col - 1
+
+	if nb_col < 0 {
+		return cellpos
+	}
+
+	return GridPos{cellpos.row, nb_col}
+}
+
+pub fn (grid2d Grid2d) cell_get_neighbor_right(cellpos GridPos) GridPos {
+	nb_col := cellpos.col + 1
+
+	if nb_col >= grid2d.cols {
+		return cellpos
+	}
+
+	return GridPos{cellpos.row, nb_col}
+}
+
+pub fn (grid2d Grid2d) cell_get_neighbor_up_left(cellpos GridPos) GridPos {
+	nb_row := cellpos.row - 1
+	nb_col := cellpos.col - 1
+
+	if nb_col < 0 || nb_row < 0 {
+		return cellpos
+	}
+
+	return GridPos{nb_row, nb_col}
+}
+
+pub fn (grid2d Grid2d) cell_get_neighbor_up_right(cellpos GridPos) GridPos {
+	nb_row := cellpos.row - 1
+	nb_col := cellpos.col + 1
+
+	if nb_col >= grid2d.cols || nb_row < 0 {
+		return cellpos
+	}
+
+	return GridPos{nb_row, nb_col}
+}
+
+pub fn (grid2d Grid2d) cell_get_neighbor_down_right(cellpos GridPos) GridPos {
+	nb_row := cellpos.row + 1
+	nb_col := cellpos.col + 1
+
+	if nb_col >= grid2d.cols || nb_row >= grid2d.rows {
+		return cellpos
+	}
+
+	return GridPos{nb_row, nb_col}
+}
+
+pub fn (grid2d Grid2d) cell_get_neighbor_down_left(cellpos GridPos) GridPos {
+	nb_row := cellpos.row + 1
+	nb_col := cellpos.col - 1
+
+	if nb_col < 0 || nb_row >= grid2d.rows {
+		return cellpos
+	}
+
+	return GridPos{nb_row, nb_col}
+}
+
+pub fn (grid2d Grid2d) cell_get_neighbors(cellpos GridPos, cross bool) []GridPos {
+	mut rs := []GridPos{}
+	left := grid2d.cell_get_neighbor_left(cellpos)
+	leftid := grid2d.gridpos_to_id(left)
+	right := grid2d.cell_get_neighbor_right(cellpos)
+	rightid := grid2d.gridpos_to_id(right)
+	up := grid2d.cell_get_neighbor_up(cellpos)
+	upid := grid2d.gridpos_to_id(up)
+	down := grid2d.cell_get_neighbor_down(cellpos)
+	downid := grid2d.gridpos_to_id(down)
+
+	if left !in rs && left != cellpos && grid2d.cells[leftid].walkable {
+		rs << left
+	}
+
+	if right !in rs && right != cellpos && grid2d.cells[rightid].walkable {
+		rs << right
+	}
+
+	if up !in rs && up != cellpos && grid2d.cells[upid].walkable {
+		rs << up
+	}
+
+	if down !in rs && down != cellpos && grid2d.cells[downid].walkable {
+		rs << down
+	}
+
+	if !cross {
+		return rs
+	}
+
+	up_left := grid2d.cell_get_neighbor_up_left(cellpos)
+	upleftid := grid2d.gridpos_to_id(up_left)
+	up_right := grid2d.cell_get_neighbor_up_right(cellpos)
+	uprightid := grid2d.gridpos_to_id(up_right)
+	down_left := grid2d.cell_get_neighbor_down_left(cellpos)
+	downleftid := grid2d.gridpos_to_id(down_left)
+	down_right := grid2d.cell_get_neighbor_down_right(cellpos)
+	downrightid := grid2d.gridpos_to_id(down_right)
+
+	if up_left !in rs && up_left != cellpos && grid2d.cells[upleftid].walkable && up in rs
+		&& left in rs {
+		rs << up_left
+	}
+
+	if up_right !in rs && up_right != cellpos && grid2d.cells[uprightid].walkable && up in rs
+		&& right in rs {
+		rs << up_right
+	}
+
+	if down_left !in rs && down_left != cellpos && grid2d.cells[downleftid].walkable && down in rs
+		&& left in rs {
+		rs << down_left
+	}
+
+	if down_right !in rs && down_right != cellpos && grid2d.cells[downrightid].walkable
+		&& down in rs && right in rs {
+		rs << down_right
+	}
+
+	return rs
+}
+
+pub fn (grid2d Grid2d) gridpos_neighbors_to_idpos_neighbors(gridpos_neighbors []GridPos) []int {
+	mut id_neighbors := []int{}
+
+	for gridpos in gridpos_neighbors {
+		id_pos := grid2d.gridpos_to_id(gridpos)
+		id_neighbors << id_pos
+	}
+
+	return id_neighbors
+}
+
+pub fn myabs(a int) int {
+	if a < 0 {
+		return -a
+	}
+
+	return a
+}
+
+pub fn calc_steps(gridpos1 GridPos, gridpos2 GridPos) int {
+	return myabs(gridpos2.row - gridpos1.row) + myabs(gridpos2.col - gridpos1.col)
+}
+
+pub fn (grid2d Grid2d) get_cells_around(cell_to int, cross bool) []int {
+	if grid2d.cells[cell_to].walkable && !grid2d.cells[cell_to].has_mover {
+		return [cell_to]
+	}
+
+	mut costs := {
+		cell_to: 0
+	}
+	mut opentable := [cell_to]
+	mut step := 1
+
+	for opentable.len != 0 {
+		mut new_opentable := []int{}
+
+		for cell in opentable {
+			cell_pos := grid2d.id_to_gridpos(cell)
+			neighbors := grid2d.cell_get_neighbors(cell_pos, cross)
+			mut is_stop := false
+
+			for n in neighbors {
+				id_n := grid2d.gridpos_to_id(n)
+
+				if _ := costs[id_n] {
+				} else {
+					costs[id_n] = step
+					new_opentable << id_n
+				}
+
+				if grid2d.cells[id_n].walkable && !grid2d.cells[id_n].has_mover {
+					is_stop = true
+				}
 			}
-		} else {
-			mover.selected = false
+
+			if is_stop {
+				return new_opentable
+			}
+		}
+
+		opentable = new_opentable.clone()
+		step += 1
+	}
+
+	return []int{}
+}
+
+pub fn (grid2d Grid2d) find_steps_to_stop(cell_to int, cross bool) int {
+	if grid2d.cells[cell_to].walkable && !grid2d.cells[cell_to].has_mover {
+		return 0
+	}
+
+	mut costs := {
+		cell_to: 0
+	}
+	mut opentable := [cell_to]
+	mut step := 1
+
+	for opentable.len != 0 {
+		mut new_opentable := []int{}
+
+		for cell in opentable {
+			cell_pos := grid2d.id_to_gridpos(cell)
+			neighbors := grid2d.cell_get_neighbors(cell_pos, cross)
+			mut is_stop := false
+
+			for n in neighbors {
+				id_n := grid2d.gridpos_to_id(n)
+
+				if _ := costs[id_n] {
+				} else {
+					costs[id_n] = step
+					new_opentable << id_n
+				}
+
+				if grid2d.cells[id_n].walkable && !grid2d.cells[id_n].has_mover {
+					is_stop = true
+				}
+			}
+
+			if is_stop {
+				return step
+			}
+		}
+
+		opentable = new_opentable.clone()
+		step += 1
+	}
+
+	return -1
+}
+
+pub fn (grid2d Grid2d) create_dijkstra_map(pos_to GridPos, cross bool) map[int]int {
+	cell_to := grid2d.gridpos_to_id(pos_to)
+	mut costs := {
+		cell_to: 0
+	}
+	mut opentable := [cell_to]
+	mut step := 1
+
+	for opentable.len != 0 {
+		mut new_opentable := []int{}
+
+		for cell in opentable {
+			cell_pos := grid2d.id_to_gridpos(cell)
+			neighbors := grid2d.cell_get_neighbors(cell_pos, cross)
+
+			for n in neighbors {
+				id_n := grid2d.gridpos_to_id(n)
+
+				if _ := costs[id_n] {
+				} else {
+					costs[id_n] = step
+					new_opentable << id_n
+				}
+			}
+		}
+
+		opentable = new_opentable.clone()
+		step += 1
+	}
+
+	return costs
+}
+
+pub fn (grid2d Grid2d) set_mover_target(mut mover Mover, x f32, y f32) {
+	pixelpos_click := PixelPos{x, y}
+	gridpos_click := grid2d.pixelpos_to_gridpos(pixelpos_click)
+	cell_click := grid2d.gridpos_to_id(gridpos_click)
+	mover.visited_cells.clear()
+	mover.target_pos = pixelpos_click
+	mover.target_gridpos = gridpos_click
+	mover.costdata_id = cell_click
+}
+
+pub fn find_steps_to_stop_to_each_target(grid2d Grid2d) map[int]int {
+	mut new_steps_to_stop := grid2d.steps_to_stop.clone()
+
+	for target_id in grid2d.djmaps.keys() {
+		new_steps_to_stop[target_id] = grid2d.find_steps_to_stop(target_id, grid2d.cross)
+	}
+
+	return new_steps_to_stop
+}
+
+pub struct Mover {
+pub mut:
+	id             int
+	start_pos      PixelPos
+	current_pos    PixelPos
+	grid_pos       GridPos
+	id_pos         int
+	old_id_pos     int
+	next_pos       PixelPos
+	target_pos     PixelPos
+	target_gridpos GridPos
+	percent_moved  f32 = 1.0
+	percent_speed  f32 = 0.05
+	base_speed     f32 = 0.1
+	cost_to_stop   int
+	visited_cells  []int
+	selected       bool
+	costdata_id    int = -1
+	rot            int
+	debug          string
+	team           int
+}
+
+pub struct CellCost {
+pub mut:
+	cell_id    int
+	cost       int
+	steps      int
+	has_mover  bool
+	registered bool
+}
+
+pub fn (grid2d Grid2d) create_mover(gridpos GridPos) Mover {
+	pixelpos := grid2d.gridpos_to_pixelpos(gridpos, true)
+	id_pos := grid2d.pixelpos_to_id(pixelpos)
+	grid_pos := grid2d.id_to_gridpos(id_pos)
+
+	return Mover{
+		start_pos: pixelpos
+		current_pos: pixelpos
+		grid_pos: grid_pos
+		next_pos: pixelpos
+		target_pos: pixelpos
+		target_gridpos: grid_pos
+		id_pos: id_pos
+		old_id_pos: id_pos
+	}
+}
+
+pub fn reg_unreg_target_cell(mover_id int, cell_click int, mut grid2d Grid2d) {
+	for target_cell in grid2d.targets_regs.keys() {
+		if _ := grid2d.targets_regs[target_cell][mover_id] {
+			grid2d.targets_regs[target_cell].delete(mover_id)
+
+			if grid2d.targets_regs[target_cell].len == 0 {
+				if _ := grid2d.djmaps[target_cell] {
+					grid2d.djmaps.delete(target_cell)
+				}
+
+				grid2d.targets_regs.delete(target_cell)
+			}
+		}
+	}
+
+	grid2d.targets_regs[cell_click][mover_id] = true
+}
+
+fn (mut mover Mover) on_leave_cell(mut grid2d Grid2d) {
+	if mover.old_id_pos != mover.id_pos {
+		grid2d.cells[mover.old_id_pos].has_mover = false
+		mover.old_id_pos = mover.id_pos
+	}
+}
+
+pub fn (mover Mover) is_step_reached() bool {
+	return mover.current_pos == mover.next_pos
+}
+
+pub fn (mover Mover) unreg(current_cell int, mut grid2d Grid2d) {
+	if grid2d.cells[current_cell].register == mover.id {
+		grid2d.cells[current_cell].registered = false
+	}
+}
+
+pub fn (mover Mover) is_target_reached() bool {
+	return mover.target_gridpos == mover.grid_pos
+}
+
+fn cost_neighbors_filter_not_has_mover(cost_neighbors []CellCost) []CellCost {
+	mut rs := []CellCost{}
+
+	for cell_cost in cost_neighbors {
+		if !cell_cost.has_mover {
+			rs << cell_cost
 		}
 	}
 
 	return rs
 }
 
-fn select_movers_in_rect_select_area(mut app App) {
-	mut has_mover_selected := app.has_mover_selected
+fn cost_neighbors_filter_not_registered(cost_neighbors []CellCost) []CellCost {
+	mut rs := []CellCost{}
 
-	for _, mut mover in app.grid2d.mover_map {
-		if mover.team == 1 {
-			in_rectselect_x := mover.current_pos.x >= app.rectselectarea.drawpos.x
-				&& mover.current_pos.x <= app.rectselectarea.drawpos.x + app.rectselectarea.size.x
-			in_rectselect_y := mover.current_pos.y >= app.rectselectarea.drawpos.y
-				&& mover.current_pos.y <= app.rectselectarea.drawpos.y + app.rectselectarea.size.y
-
-			if in_rectselect_x && in_rectselect_y {
-				mover.selected = true
-
-				if !has_mover_selected {
-					has_mover_selected = true
-				}
-			}
+	for cell_cost in cost_neighbors {
+		if !cell_cost.registered {
+			rs << cell_cost
 		}
 	}
 
-	app.has_mover_selected = has_mover_selected
+	return rs
 }
 
-fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
-	pixelpos_click := mygrid2d.PixelPos{x, y}
-	gridpos_click := app.grid2d.pixelpos_to_gridpos(pixelpos_click)
-	cell_click := app.grid2d.gridpos_to_id(gridpos_click)
+fn cost_neighbors_filter_not_in_visited_cells(cost_neighbors []CellCost, visited_cells []int) []CellCost {
+	mut rs := []CellCost{}
 
-	match button {
-		.left {
-			mut has_mover_selected := false
-
-			for _, mut mover in app.grid2d.mover_map {
-				team := 1
-				rs := click_select_mover_team(mut mover, pixelpos_click, team, app)
-
-				if rs {
-					if !has_mover_selected {
-						has_mover_selected = true
-					}
-				}
-
-				rect_select_start(pixelpos_click, mut app)
-			}
-
-			app.has_mover_selected = has_mover_selected
+	for cell_cost in cost_neighbors {
+		if cell_cost.cell_id !in visited_cells {
+			rs << cell_cost
 		}
-		.right {
-			if _ := app.grid2d.djmaps[cell_click] {
+	}
+
+	return rs
+}
+
+fn cost_neighbors_filter_cost(cost_neighbors []CellCost, cost int) []CellCost {
+	mut rs := []CellCost{}
+
+	for cell_cost in cost_neighbors {
+		if cell_cost.cost == cost {
+			rs << cell_cost
+		}
+	}
+
+	return rs
+}
+
+fn cost_neighbors_sort_cost_assending(cost_neighbors []CellCost) []CellCost {
+	if cost_neighbors.len < 2 {
+		return cost_neighbors
+	}
+
+	mut rs := cost_neighbors.clone()
+	mut count := 0
+	n := rs.len
+
+	for count < n - 1 {
+		cell_cost := rs[count]
+		cell_cost2 := rs[count + 1]
+
+		if cell_cost.cost > cell_cost2.cost {
+			rs[count], rs[count + 1] = rs[count + 1], rs[count]
+			count = 0
+		} else {
+			count += 1
+		}
+	}
+
+	return rs
+}
+
+fn cost_neighbors_sort_steps_assending(cost_neighbors []CellCost) []CellCost {
+	if cost_neighbors.len < 2 {
+		return cost_neighbors
+	}
+
+	mut rs := cost_neighbors.clone()
+	mut count := 0
+	n := rs.len
+
+	for count < n - 1 {
+		cell_cost := rs[count]
+		cell_cost2 := rs[count + 1]
+
+		if cell_cost.steps > cell_cost2.steps {
+			rs[count], rs[count + 1] = rs[count + 1], rs[count]
+			count = 0
+		} else {
+			count += 1
+		}
+	}
+
+	return rs
+}
+
+fn (mover Mover) find_neighbors(costdata map[int]int, grid2d Grid2d, cross bool) []CellCost {
+	gridpos_neighbors := grid2d.cell_get_neighbors(mover.grid_pos, cross)
+	id_neighbors := grid2d.gridpos_neighbors_to_idpos_neighbors(gridpos_neighbors)
+	mut cost_neighbors := []CellCost{}
+
+	for cell_id in id_neighbors {
+		cost := costdata[cell_id]
+		step := calc_steps(grid2d.id_to_gridpos(cell_id), mover.target_gridpos)
+		has_mover := grid2d.cells[cell_id].has_mover
+		registered := grid2d.cells[cell_id].registered
+		cost_neighbors << CellCost{cell_id, cost, step, has_mover, registered}
+	}
+
+	// cost_neighbors = cost_neighbors.filter(it.has_mover == false)
+	// cost_neighbors = cost_neighbors.filter(it.registered == false)
+	// cost_neighbors = cost_neighbors.filter(it.cell_id !in mover.visited_cells)
+	// cost_neighbors.sort(a.cost < b.cost)
+	// cost_neighbors = cost_neighbors.filter(it.cost == cost_neighbors[0].cost)
+
+	cost_neighbors = cost_neighbors_filter_not_has_mover(cost_neighbors)
+	cost_neighbors = cost_neighbors_filter_not_registered(cost_neighbors)
+	cost_neighbors = cost_neighbors_filter_not_in_visited_cells(cost_neighbors, mover.visited_cells)
+	cost_neighbors = cost_neighbors_sort_cost_assending(cost_neighbors)
+
+	if cost_neighbors.len > 0 {
+		cost_neighbors = (spawn cost_neighbors_filter_cost(cost_neighbors, cost_neighbors[0].cost)).wait()
+		// cost_neighbors.sort(a.steps < b.steps)
+		cost_neighbors = (spawn cost_neighbors_sort_steps_assending(cost_neighbors)).wait()
+	}
+
+	return cost_neighbors
+}
+
+pub fn (mover Mover) find_next_pos(costdata map[int]int, cost_neighbors []CellCost, grid2d Grid2d) PixelPos {
+	if cur_cost := costdata[mover.id_pos] {
+		if cur_cost <= mover.cost_to_stop {
+			return mover.next_pos
+		}
+	}
+
+	neighbor_min_cost := cost_neighbors[0]
+	new_next_gridpos := grid2d.id_to_gridpos(neighbor_min_cost.cell_id)
+
+	return grid2d.gridpos_to_pixelpos(new_next_gridpos, true)
+}
+
+pub fn (mut mover Mover) step_moving(djmaps map[int]map[int]int, mut grid2d Grid2d) bool {
+	mover.on_leave_cell(mut grid2d)
+
+	if mover.is_step_reached() {
+		mover.grid_pos = grid2d.pixelpos_to_gridpos(mover.current_pos)
+		mover.id_pos = grid2d.gridpos_to_id(mover.grid_pos)
+		grid2d.cells[mover.id_pos].has_mover = true
+		mover.unreg(mover.id_pos, mut grid2d)
+
+		if mover.is_target_reached() {
+			mover.visited_cells.clear()
+			return false
+		}
+
+		target_id := grid2d.gridpos_to_id(mover.target_gridpos)
+
+		if stop_cost := grid2d.steps_to_stop[target_id] {
+			if stop_cost != -1 {
+				if djmaps[mover.costdata_id][mover.id_pos] <= stop_cost {
+					mover.visited_cells.clear()
+					mover.target_pos = mover.current_pos
+					mover.target_gridpos = grid2d.pixelpos_to_gridpos(mover.target_pos)
+					return false
+				}
+			}
+		}
+
+		if costdata := djmaps[mover.costdata_id] {
+			cost_neighbors := mover.find_neighbors(costdata, grid2d, grid2d.cross)
+			mover.start_pos = mover.next_pos
+			mover.percent_moved = 0
+
+			if cost_neighbors.len == 0 {
+				mover.visited_cells.clear()
 			} else {
-				if app.has_mover_selected {
-					spawn mygrid2d.create_djmap(
-						app.grid2d,
-						gridpos_click, 
-						app.grid2d.cross, 
-						app.ch_djmap
-					)
-				}
+				neighbor_min_cost := cost_neighbors[0]
+				grid2d.cells[neighbor_min_cost.cell_id].register = mover.id
+				grid2d.cells[neighbor_min_cost.cell_id].registered = true
+				mover.next_pos = mover.find_next_pos(costdata, cost_neighbors, grid2d)
 			}
 		}
-		else {}
-	}
-}
 
-fn on_mouse_up(x f32, y f32, button gg.MouseButton, mut app App) {
-	match button {
-		.left {
-			select_movers_in_rect_select_area(mut app)
-			rect_select_finished(mut app)
+		return false
+	}
+
+	if mover.id_pos !in mover.visited_cells {
+		mover.visited_cells << mover.id_pos
+		if mover.visited_cells.len > 16 {
+			mover.visited_cells.delete(0)
 		}
-		.right {}
-		else {}
+	}
+
+	is_same_col := mover.start_pos.x - mover.next_pos.x == 0
+	is_same_row := mover.start_pos.y - mover.next_pos.y == 0
+	adjust_speed := if !is_same_col && !is_same_row { f32(0.7) } else { f32(1.0) }
+
+	mover.current_pos.x = mover.start_pos.x +
+		mover.percent_moved * (mover.next_pos.x - mover.start_pos.x)
+	mover.current_pos.y = mover.start_pos.y +
+		mover.percent_moved * (mover.next_pos.y - mover.start_pos.y)
+
+	mover.percent_moved += mover.percent_speed * adjust_speed
+
+	if mover.percent_moved > 1 {
+		mover.percent_moved = 1
+	}
+
+	return true
+}
+
+pub fn (mover Mover) calc_mover_rot(grid2d Grid2d) int {
+	nxtgridpos := grid2d.pixelpos_to_gridpos(mover.next_pos)
+	curgridpos := grid2d.pixelpos_to_gridpos(mover.current_pos)
+	dx := nxtgridpos.col - curgridpos.col
+	dy := nxtgridpos.row - curgridpos.row
+	rotdata := '${dx} ${dy}'
+	rotdata_dict := {
+		'1 0':   0
+		'1 -1':  45
+		'0 -1':  90
+		'-1 -1': 135
+		'-1 0':  180
+		'-1 1':  225
+		'0 1':   270
+		'1 1':   315
+		'0 0':   mover.rot
+	}
+
+	return rotdata_dict[rotdata]
+}
+
+pub fn (mut grid2d Grid2d) update_mover() {
+	for _, mut mover in grid2d.mover_map {
+		spd_rate := f32(grid2d.cols) / 100.0
+		mover.percent_speed = mover.base_speed * spd_rate
+		rot := mover.calc_mover_rot(grid2d)
+		mover.rot = if rot != -1 { rot } else { mover.rot }
+		mover.step_moving(grid2d.djmaps, mut grid2d)
 	}
 }
 
-fn on_key_down(key gg.KeyCode, m gg.Modifier, mut app App) {}
+pub fn (mut grid2d Grid2d) process_steps_to_stop(ch_sts chan map[int]int) {
+	// channel find steps to stop
+	spawn fn (the_channel chan map[int]int, the_grid2d Grid2d) {
+		the_channel <- find_steps_to_stop_to_each_target(the_grid2d)
+	}(ch_sts, grid2d)
 
-fn on_key_up(key gg.KeyCode, m gg.Modifier, mut app App) {}
+	mut a := map[int]int{}
 
-fn draw_debug_each_cell(app App, px int, py int, cell mygrid2d.Cell) {
-	ctx := app.gg
-	debug := cell.has_mover
-
-	if debug {
-		ctx.draw_text(px, py, '1', gx.TextCfg{ color: gx.red })
-	} else {
-		ctx.draw_text(px, py, '0', gx.TextCfg{ color: gx.red })
+	if ch_sts.try_pop(mut a) == .success {
+		grid2d.steps_to_stop = a.clone()
 	}
 }
 
-fn draw_djmap_test_each_cell(app App, px int, py int, cell mygrid2d.Cell) {
-	ctx := app.gg
+pub fn (mut grid2d Grid2d) try_pop_djmap(ch_djmap chan DjmapChan) {
+	// channel create dikstra map
+	mut b := DjmapChan{}
 
-	if app.djmap_test.len != 0 {
-		ctx.draw_text(px, py, '${app.djmap_test[cell.id]}', gx.TextCfg{ color: gx.white, size: 12 })
-	}
-}
-
-fn draw_grid_map(app App) {
-	ctx := app.gg
-
-	for _, cell in app.grid2d.cells {
-		walkable := cell.walkable
-		pos := app.grid2d.gridpos_to_pixelpos(cell.gridpos, false)
-		px := int(pos.x)
-		py := int(pos.y)
-
-		if !walkable {
-			ctx.draw_rect_filled(px, py, app.grid2d.cell_size, app.grid2d.cell_size, gx.gray)
-		} else {
-			// mut cl := gx.green
-			// cl.a = 10
-			// ctx.draw_rect_empty(px, py, app.grid2d.cell_size, app.grid2d.cell_size, cl)
-		}
-
-		// draw_djmap_test_each_cell(app, px, py, cell)
-
-		// draw_debug_each_cell(app, px, py, cell)
-	}
-}
-
-fn draw_movers(mover_map map[int]mygrid2d.Mover, ctx gg.Context, imgs []gg.Image) {
-	for _, mover in mover_map {
-		x := mover.current_pos.x
-		y := mover.current_pos.y
-		rot := mover.rot
-		mut cl := gx.purple
-
-		if mover.team == 1 {
-			cl = gx.green
-		}
-
-		if mover.selected {
-			ctx.draw_image_with_config(gg.DrawImageConfig{
-				flip_x: false
-				flip_y: false
-				img: &imgs[0]
-				img_rect: gg.Rect{
-					x: x - 8
-					y: y - 8
-					width: mover_radius
-					height: mover_radius
-				}
-				part_rect: gg.Rect{
-					x: 0
-					y: 0
-					width: 32
-					height: 32
-				}
-				rotate: rot
-				z: 0
-				color: cl
-			})
-
-			ctx.draw_circle_empty(x, y, 12, gx.yellow)
-		} else {
-			cl.a = 100
-			ctx.draw_image_with_config(gg.DrawImageConfig{
-				flip_x: false
-				flip_y: false
-				img: &imgs[0]
-				img_rect: gg.Rect{
-					x: x - 8
-					y: y - 8
-					width: mover_radius
-					height: mover_radius
-				}
-				part_rect: gg.Rect{
-					x: 0
-					y: 0
-					width: 32
-					height: 32
-				}
-				rotate: rot
-				z: 0
-				color: cl
-			})
+	if ch_djmap.try_pop(mut b) == .success {
+		grid2d.djmaps[b.id] = b.djmap.clone()
+		if b.id !in grid2d.djmap_just_created_list {
+			grid2d.djmap_just_created_list << b.id
 		}
 
-		ctx.draw_text(int(mover.current_pos.x), int(mover.current_pos.y), mover.debug,
-			gx.TextCfg{ color: gx.red })
+		// if _ := grid2d.djmaps[b.id] {
+		// 	app.djmap_test = grid2d.djmaps[b.id].clone()
+		// }
 	}
 }
 
-pub fn (mut app App) grid2d_random_walkable() {
-	for row in 0 .. app.grid2d.rows {
-		for col in 0 .. app.grid2d.cols {
-			gridpos := mygrid2d.GridPos{row, col}
-			id := app.grid2d.gridpos_to_id(gridpos)
-			mut walkable := true
-			walkable_number := rand.int_in_range(0, 100) or { panic(err) }
+pub fn create_djmap(grid2d Grid2d, gridpos_click GridPos, cross bool, the_chanel chan DjmapChan) {
+	djmap := grid2d.create_dijkstra_map(gridpos_click, cross)
+	cell_id := grid2d.gridpos_to_id(gridpos_click)
+	the_chanel <- DjmapChan{
+		id: cell_id
+		djmap: djmap
+	}
+}
 
-			if walkable_number > 95 {
-				walkable = false
+pub fn (grid2d Grid2d) is_just_created_djmap_list_empty() bool {
+	return grid2d.djmap_just_created_list.len == 0
+}
+
+pub fn (mut grid2d Grid2d) set_selected_movers_destination(mover_team int) {
+	if !grid2d.is_just_created_djmap_list_empty() {
+		cell_to := grid2d.djmap_just_created_list.last()
+		mut has_mover_selected := false
+		for mover_id, mut mover in grid2d.mover_map {
+			if mover.selected && mover.team == mover_team {
+				gridpos_ := grid2d.id_to_gridpos(cell_to)
+				pxpos_ := grid2d.gridpos_to_pixelpos(gridpos_, true)
+				grid2d.set_mover_target(mut mover, pxpos_.x, pxpos_.y)
+				reg_unreg_target_cell(mover_id, cell_to, mut grid2d)
+				has_mover_selected = true
 			}
-
-			cell := mygrid2d.Cell{
-				id: id
-				gridpos: gridpos
-				walkable: walkable
-			}
-			app.grid2d.cells[id] = cell
+		}
+		if has_mover_selected {
+			grid2d.djmap_just_created_list.delete_last()
 		}
 	}
-}
-
-fn init_images(mut app App) {
-	img_dir_list := [
-		'img/unit.png',
-		'img/wall.png',
-	]
-
-	for i in 0 .. img_dir_list.len {
-		img := app.create_image(img_dir_list[i]) or { panic(err) }
-		app.imgs << img
-	}
-}
-
-fn find_walkable_cells(app App) []mygrid2d.Cell {
-	mut walkable_cells := []mygrid2d.Cell{}
-
-	for _, cell in app.grid2d.cells {
-		if cell.walkable {
-			walkable_cells << cell
-		}
-	}
-
-	return walkable_cells
-}
-
-fn (mut app App) create_movers(mover_numbers int) {
-	// mut walkable_cells := app.grid2d.cells.values().filter(it.walkable == true)
-	mut walkable_cells := find_walkable_cells(app)
-
-	for _ in 0 .. mover_numbers {
-		n := rand.int_in_range(0, walkable_cells.len) or { panic(err) }
-		new_mover_id := app.mover_world.create_new_id()
-		app.grid2d.mover_map[new_mover_id] = app.grid2d.create_mover(walkable_cells[n].gridpos)
-
-		if new_mover_id < 2000 {
-			app.grid2d.mover_map[new_mover_id].team = 1
-			app.grid2d.mover_map[new_mover_id].percent_speed = 0.1
-		} else {
-			app.grid2d.mover_map[new_mover_id].team = 0
-		}
-
-		walkable_cells.delete(n)
-	}
-}
-
-fn init_random() {
-	seed_array := seed.time_seed_array(2)
-	rand.seed(seed_array)
-}
-
-fn main() {
-	init_random()
-
-	mut app := &App{
-		gg: 0
-	}
-
-	app.gg = gg.new_context(
-		bg_color: gx.black
-		width: w
-		height: h
-		window_title: 'grid path finding'
-		init_fn: init
-		frame_fn: frame
-		click_fn: on_mouse_down
-		unclick_fn: on_mouse_up
-		keydown_fn: on_key_down
-		keyup_fn: on_key_up
-		user_data: app
-	)
-
-	app.gg.run()
-}
-
-fn init(mut app App) {
-	init_images(mut app)
-	cross := true
-	app.grid2d.init_info(cols, rows, cell_size, cross)
-	app.grid2d_random_walkable()
-	app.create_movers(500)
-	app.debug = '${app.grid2d.mover_map.len}'
-}
-
-fn frame(mut app App) {
-	ctx := app.gg
-
-	app.rectselectarea = rectselectarea_update_draw_pos_and_size(app.rectselectarea, ctx)
-
-	app.grid2d.process_steps_to_stop(app.ch_sts)
-	app.grid2d.try_pop_djmap(app.ch_djmap)
-	
-	mover_team := 1
-	app.grid2d.set_selected_movers_destination(mover_team)
-	
-	app.grid2d.update_mover()
-
-	ctx.begin()
-
-	draw_grid_map(app)
-	draw_movers(app.grid2d.mover_map, ctx, app.imgs)
-	draw_rect_select_area(app)
-	ctx.draw_text(32, 32, 'agents: ${app.debug} cols: ${app.grid2d.cols} rows: ${app.grid2d.rows}',
-		gx.TextCfg{ color: gx.white, size: 24 })
-	ctx.draw_text(32, 64, 'targets: ${app.grid2d.djmaps.len}', gx.TextCfg{ color: gx.white, size: 24 })
-	draw_grid_map(app)
-	ctx.end()
 }
