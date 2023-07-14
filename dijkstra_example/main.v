@@ -10,11 +10,11 @@ import idman
 // import time
 
 const (
-	width     = 600
-	height    = width
-	cols      = 100
-	rows      = 100
-	cell_size = width/cols
+	w    = 600
+	h    = 600
+	cols      = 150
+	rows      = 150
+	cell_size = w/cols
 	mover_radius = 12
 )
 
@@ -380,8 +380,8 @@ fn main() {
 
 	app.gg = gg.new_context(
 		bg_color: gx.black
-		width: 600
-		height: 600
+		width: w
+		height: h
 		window_title: 'grid path finding'
 		init_fn: init
 		frame_fn: frame
@@ -400,7 +400,7 @@ fn init(mut app App) {
 	cross := true
 	app.grid2d.init_info(cols, rows, cell_size, cross)
 	app.grid2d_random_walkable()
-	app.create_movers(200)
+	app.create_movers(500)
 	app.debug = '${app.grid2d.mover_map.len}'
 }
 
@@ -411,6 +411,10 @@ fn frame(mut app App) {
 
 	app.grid2d.process_steps_to_stop(app.ch_sts)
 	app.grid2d.try_pop_djmap(app.ch_djmap)
+	
+	mover_team := 1
+	app.grid2d.set_selected_movers_destination(mover_team)
+	
 	app.grid2d.update_mover()
 
 	ctx.begin()
