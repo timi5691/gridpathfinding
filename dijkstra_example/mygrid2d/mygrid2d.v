@@ -34,6 +34,7 @@ pub mut:
 	djmaps        map[int]map[int]int
 	steps_to_stop map[int]int
 	targets_regs  map[int]map[int]bool
+	djmap_just_created_list []int
 }
 
 pub struct DjmapChan {
@@ -724,9 +725,6 @@ pub fn (mut grid2d Grid2d) update_mover() {
 	for _, mut mover in grid2d.mover_map {
 		rot := mover.calc_mover_rot(grid2d)
 		mover.rot = if rot != -1 { rot } else { mover.rot }
-	}
-
-	for _, mut mover in grid2d.mover_map {
 		mover.step_moving(grid2d.djmaps, mut grid2d)
 	}
 }
@@ -750,14 +748,8 @@ pub fn (mut grid2d Grid2d) try_pop_djmap(ch_djmap chan DjmapChan) {
 
 	if ch_djmap.try_pop(mut b) == .success {
 		grid2d.djmaps[b.id] = b.djmap.clone()
-
-		for mover_id, mut mover in grid2d.mover_map {
-			if mover.selected && mover.team == 1 {
-				gridpos_ := grid2d.id_to_gridpos(b.id)
-				pxpos_ := grid2d.gridpos_to_pixelpos(gridpos_, true)
-				grid2d.set_mover_target(mut mover, pxpos_.x, pxpos_.y)
-				reg_unreg_target_cell(mover_id, b.id, mut grid2d)
-			}
+		if !(b.id in grid2d.djmap_just_created_list) {
+			grid2d.djmap_just_created_list << b.id
 		}
 
 		// if _ := grid2d.djmaps[b.id] {
@@ -772,5 +764,28 @@ pub fn create_djmap(grid2d Grid2d, gridpos_click GridPos, cross bool, the_chanel
 	the_chanel <- DjmapChan{
 		id: cell_id
 		djmap: djmap
+	}
+}
+
+pub fn (grid2d Grid2d) is_just_created_djmap_list_empty() bool {
+	return grid2d.djmap_just_created_list.len == 0
+}
+
+pub fn (mut grid2d Grid2d) set_selected_movers_destination(mover_team int) {
+	if !grid2d.is_just_created_djmap_list_empty() {
+		cell_to := grid2d.djmap_just_created_list.last()
+		mut has_mover_selected := false
+		for mover_id, mut mover in grid2d.mover_map {
+			if mover.selected && mover.team == mover_team {
+				gridpos_ := grid2d.id_to_gridpos(cell_to)
+				pxpos_ := grid2d.gridpos_to_pixelpos(gridpos_, true)
+				grid2d.set_mover_target(mut mover, pxpos_.x, pxpos_.y)
+				mygrid2d.reg_unreg_target_cell(mover_id, cell_to, mut grid2d)
+				has_mover_selected = true
+			}
+		}
+		if has_mover_selected {
+			grid2d.djmap_just_created_list.delete_last()
+		}
 	}
 }
