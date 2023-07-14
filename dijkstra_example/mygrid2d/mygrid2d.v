@@ -25,15 +25,15 @@ pub mut:
 
 pub struct Grid2d {
 pub mut:
-	rows          int
-	cols          int
-	cell_size     f32
-	cross         bool = true
-	cells         map[int]Cell
-	mover_map     map[int]Mover
-	djmaps        map[int]map[int]int
-	steps_to_stop map[int]int
-	targets_regs  map[int]map[int]bool
+	rows                    int
+	cols                    int
+	cell_size               f32
+	cross                   bool = true
+	cells                   map[int]Cell
+	mover_map               map[int]Mover
+	djmaps                  map[int]map[int]int
+	steps_to_stop           map[int]int
+	targets_regs            map[int]map[int]bool
 	djmap_just_created_list []int
 }
 
@@ -414,6 +414,7 @@ pub mut:
 	target_gridpos GridPos
 	percent_moved  f32 = 1.0
 	percent_speed  f32 = 0.05
+	base_speed     f32 = 0.1
 	cost_to_stop   int
 	visited_cells  []int
 	selected       bool
@@ -723,6 +724,8 @@ pub fn (mover Mover) calc_mover_rot(grid2d Grid2d) int {
 
 pub fn (mut grid2d Grid2d) update_mover() {
 	for _, mut mover in grid2d.mover_map {
+		spd_rate := f32(grid2d.cols) / 100.0
+		mover.percent_speed = mover.base_speed * spd_rate
 		rot := mover.calc_mover_rot(grid2d)
 		mover.rot = if rot != -1 { rot } else { mover.rot }
 		mover.step_moving(grid2d.djmaps, mut grid2d)
@@ -748,7 +751,7 @@ pub fn (mut grid2d Grid2d) try_pop_djmap(ch_djmap chan DjmapChan) {
 
 	if ch_djmap.try_pop(mut b) == .success {
 		grid2d.djmaps[b.id] = b.djmap.clone()
-		if !(b.id in grid2d.djmap_just_created_list) {
+		if b.id !in grid2d.djmap_just_created_list {
 			grid2d.djmap_just_created_list << b.id
 		}
 
@@ -780,7 +783,7 @@ pub fn (mut grid2d Grid2d) set_selected_movers_destination(mover_team int) {
 				gridpos_ := grid2d.id_to_gridpos(cell_to)
 				pxpos_ := grid2d.gridpos_to_pixelpos(gridpos_, true)
 				grid2d.set_mover_target(mut mover, pxpos_.x, pxpos_.y)
-				mygrid2d.reg_unreg_target_cell(mover_id, cell_to, mut grid2d)
+				reg_unreg_target_cell(mover_id, cell_to, mut grid2d)
 				has_mover_selected = true
 			}
 		}
