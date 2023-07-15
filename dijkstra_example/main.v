@@ -14,6 +14,7 @@ const (
 	h            = 600
 	cols         = 100
 	rows         = 100
+	movers = 100
 	cell_size    = w / cols
 	mover_radius = 12
 )
@@ -165,6 +166,10 @@ fn on_mouse_down(x f32, y f32, button gg.MouseButton, mut app App) {
 		}
 		.right {
 			if _ := app.grid2d.djmaps[cell_click] {
+				if app.has_mover_selected {
+					mover_team := 1
+					app.grid2d.set_selected_movers_cell_to(cell_click, mover_team)
+				}
 			} else {
 				if app.has_mover_selected {
 					spawn mygrid2d.create_djmap(app.grid2d, gridpos_click, app.grid2d.cross,
@@ -405,7 +410,7 @@ fn init(mut app App) {
 	cross := true
 	app.grid2d.init_info(cols, rows, cell_size, cross)
 	app.grid2d_random_walkable()
-	app.create_movers(100)
+	app.create_movers(movers)
 	app.debug = '${app.grid2d.mover_map.len}'
 }
 
