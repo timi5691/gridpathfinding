@@ -792,3 +792,17 @@ pub fn (mut grid2d Grid2d) set_selected_movers_destination(mover_team int) {
 		}
 	}
 }
+
+pub fn (mut grid2d Grid2d) set_selected_movers_cell_to(cell_to int, mover_team int) {
+	if _ := grid2d.djmaps[cell_to] {
+		for mover_id, mut mover in grid2d.mover_map {
+			if mover.selected && mover.team == mover_team {
+				gridpos_ := grid2d.id_to_gridpos(cell_to)
+				pxpos_ := grid2d.gridpos_to_pixelpos(gridpos_, true)
+				grid2d.set_mover_target(mut mover, pxpos_.x, pxpos_.y)
+				reg_unreg_target_cell(mover_id, cell_to, mut grid2d)
+			}
+		}
+	}
+}
+
