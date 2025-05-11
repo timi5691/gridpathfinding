@@ -108,11 +108,11 @@ pub fn load_data[T](file_name string, base_dir string) T {
 // GAME INIT
 
 pub fn load_assets(mut game Game) {
-	items_img := game.ctx.create_image(asset.get_path('../imgs', 'items.png')) or { panic(err) }
-	test_unit_img := game.ctx.create_image(asset.get_path('../imgs', 'test_unit.png')) or {
+	items_img := game.ctx.create_image(asset.get_path('imgs', 'items.png')) or { panic(err) }
+	test_unit_img := game.ctx.create_image(asset.get_path('imgs', 'test_unit.png')) or {
 		panic(err)
 	}
-	cursors_img := game.ctx.create_image(asset.get_path('../imgs', 'cursors.png')) or { panic(err) }
+	cursors_img := game.ctx.create_image(asset.get_path('imgs', 'cursors.png')) or { panic(err) }
 	game.img_map = {
 		'cursors':   &cursors_img
 		'items':     &items_img
