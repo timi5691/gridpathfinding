@@ -32,9 +32,9 @@ pub mut:
 	right_mouse_pressed    bool
 	left_mouse_released    bool
 	right_mouse_released   bool
-	pressing_keys          [gg.key_code_max]bool
-	pressed_keys           [gg.key_code_max]bool
-	released_keys          [gg.key_code_max]bool
+	pressing_keys          [512]bool
+	pressed_keys           [512]bool
+	released_keys          [512]bool
 	dt_sw                  time.StopWatch
 	fps                    int
 	game_gui_left_click_x  int
