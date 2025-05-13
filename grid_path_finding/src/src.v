@@ -409,6 +409,9 @@ pub fn draw(mut game Game) {
 			}
 			draw_pos := gobj.cur_pos.minus(game.cam.pos)
 			mut self_cl := gx.blue
+			if gobj.team == 2 {
+				self_cl = gx.red
+			}
 			if gobj.hurt_time > -1 {
 				self_cl = gx.white
 			}
@@ -439,25 +442,27 @@ pub fn draw(mut game Game) {
 				// 	align:          .center
 				// 	vertical_align: .top
 				// })
+
+				// draw hp bar
+				hp_cell := 5
+				a := int(game.grid.cell_size / hp_cell)
+				if gobj.hp > 0 {
+					mut cl := if gobj.team == 1 { gx.green } else { gx.red }
+					if gobj.is_hurt {
+						cl = gx.white
+					}
+					cl.a = 255
+					for i in 0 .. hp_cell {
+						ctx.draw_rect_empty(draw_pos.x - game.grid.cell_size / 2.0 + i * a,
+							draw_pos.y - game.grid.cell_size / 2.0 - 8, a, 8, gx.white)
+					}
+					ctx.draw_rect_filled(draw_pos.x - game.grid.cell_size / 2.0, draw_pos.y - game.grid.cell_size / 2.0 - 8,
+						gobj.hp / gobj.max_hp * game.grid.cell_size, 8, cl)
+					// ctx.draw_rect_empty(draw_pos.x  - game.grid.cell_size/2.0, draw_pos.y - game.grid.cell_size/2.0 - 8, 32.0, 8, gx.white)
+				}
 			}
 
-			// draw hp bar
-			hp_cell := 5
-			a := int(game.grid.cell_size / hp_cell)
-			if gobj.hp > 0 {
-				mut cl := if gobj.team == 1 { gx.green } else { gx.red }
-				if gobj.is_hurt {
-					cl = gx.white
-				}
-				cl.a = 255
-				for i in 0 .. hp_cell {
-					ctx.draw_rect_empty(draw_pos.x - game.grid.cell_size / 2.0 + i * a,
-						draw_pos.y - game.grid.cell_size / 2.0 - 8, a, 8, gx.white)
-				}
-				ctx.draw_rect_filled(draw_pos.x - game.grid.cell_size / 2.0, draw_pos.y - game.grid.cell_size / 2.0 - 8,
-					gobj.hp / gobj.max_hp * game.grid.cell_size, 8, cl)
-				// ctx.draw_rect_empty(draw_pos.x  - game.grid.cell_size/2.0, draw_pos.y - game.grid.cell_size/2.0 - 8, 32.0, 8, gx.white)
-			}
+				
 		}
 		gobj.hurt_end()
 	}
